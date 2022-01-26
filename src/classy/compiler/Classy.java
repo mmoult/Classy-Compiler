@@ -38,7 +38,7 @@ public class Classy {
 		// remove the file extension from the path name. This will be the module name
 		String moduleName;
 		if (pathName.indexOf('.') != -1) {
-			moduleName = pathName.substring(0, pathName.indexOf('.'));
+			moduleName = pathName.substring(0, pathName.lastIndexOf('.'));
 		}else
 			moduleName = pathName;
 		
@@ -65,7 +65,7 @@ public class Classy {
 		
 		// Just creating the checker object will run the checker and
 		// try to catch any type errors that may be present.
-		Checker check = new Checker(program, true);
+		Checker check = new Checker(program, false); //TODO temporarily disabled optimization
 		System.out.println("Optimized:");
 		System.out.println(program.pretty(0));
 		List<Variable> vars = check.getVariables();
@@ -94,6 +94,7 @@ public class Classy {
 		if (fw != null) {
 			// Now we are going to want to compile to an executable.
 			// We use llc first, then gcc.
+			System.out.println(); // put a space between last output and this
 			runProcess(List.of("llc", moduleName+".ll", "-o", moduleName+".s"), "Static compiling");
 			runProcess(List.of("gcc", moduleName+".s", "-o", moduleName+".exe"), "Linking");
 		}

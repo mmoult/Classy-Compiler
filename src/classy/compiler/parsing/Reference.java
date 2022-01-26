@@ -2,10 +2,10 @@ package classy.compiler.parsing;
 
 import classy.compiler.lexing.Token;
 
-public class Reference extends Expression {
+public class Reference extends Subexpression {
 	protected String varName;
 	
-	public Reference(NestingExpression parent) {
+	public Reference(Value parent) {
 		super(parent);
 	}
 
@@ -20,6 +20,15 @@ public class Reference extends Expression {
 	
 	public String getVarName() {
 		return varName;
+	}
+	
+	@Override
+	public boolean isLink() {
+		return false;
+	}
+	
+	public Value getParent() {
+		return parent;
 	}
 	
 	@Override

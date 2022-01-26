@@ -2,10 +2,10 @@ package classy.compiler.parsing;
 
 import classy.compiler.lexing.Token;
 
-public class Literal extends Expression {
+public class Literal extends Subexpression {
 	protected Token token;
 	
-	public Literal(NestingExpression parent) {
+	public Literal(Value parent) {
 		super(parent);
 	}
 
@@ -20,6 +20,11 @@ public class Literal extends Expression {
 	
 	public Token getToken() {
 		return token;
+	}
+	
+	@Override
+	public boolean isLink() {
+		return false;
 	}
 	
 	@Override

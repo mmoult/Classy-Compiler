@@ -4,11 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public abstract class Expression {
-	protected NestingExpression parent;
-	
-	public Expression(NestingExpression parent) {
-		this.parent = parent;
-	}
 	
 	/**
 	 * Parses important data for the expression from the token
@@ -21,10 +16,6 @@ public abstract class Expression {
 	 * @param end the index of the token list that may not be reached in processing.
 	 */
 	public abstract void parse(TokenIterator it, int end);
-	
-	public NestingExpression getParent() {
-		return parent;
-	}
 	
 	/**
 	 * Should be overridden in subclasses to return all nested expressions in

@@ -9,11 +9,14 @@ import java.util.Set;
 
 import classy.compiler.analyzing.Variable;
 import classy.compiler.parsing.Assignment;
+import classy.compiler.parsing.BinOp;
 import classy.compiler.parsing.Block;
 import classy.compiler.parsing.Expression;
 import classy.compiler.parsing.If;
 import classy.compiler.parsing.Literal;
+import classy.compiler.parsing.Operation;
 import classy.compiler.parsing.Reference;
+import classy.compiler.parsing.Subexpression;
 import classy.compiler.parsing.Value;
 
 public class Translator {
@@ -121,6 +124,60 @@ public class Translator {
 			// This requires a load and then a store
 			int value = load(name);
 			store("%"+value, retAt);
+		}else if (e instanceof Operation) {
+			Operation op = (Operation)e;
+			String rhs;
+			List<Subexpression> opRhs = op.getRHS().getSubexpressions();
+			if (opRhs.size() == 1 && opRhs.get(0) instanceof Literal) {
+				// We can optimize if it is an int literal by a direct output
+				rhs = ((Literal)opRhs.get(0)).getToken().getValue();
+			}else {
+				int ra = allocate();
+				translate(op.getRHS(), ra+"");
+				int rl = load(ra+"");
+				rhs = "%" + rl;
+			}
+			
+			if (op instanceof BinOp) {
+				BinOp bop = (BinOp)op;
+				String lhs;
+				List<Subexpression> opLhs = bop.getLHS().getSubexpressions();
+				if (opLhs.size() == 1 && opLhs.get(0) instanceof Literal) {
+					// We can optimize if it is an int literal by a direct output
+					lhs = ((Literal)opLhs.get(0)).getToken().getValue();
+				}else {
+					int la = allocate();
+					translate(bop.getLHS(), la+"");
+					int ll = load(la+"");
+					lhs = "%" + ll;
+				}
+				int result = varNum++;
+				String operation = "add";
+				if (op instanceof BinOp.Addition)
+					operation = "add nsw";
+				else if (op instanceof BinOp.Subtraction)
+					operation = "sub nsw";
+				else if (op instanceof BinOp.Multiplication)
+					operation = "mul nsw";
+				else if (op instanceof BinOp.Division)
+					operation = "sdiv";
+				addLine("%", Integer.toString(result), " = ", operation, " i32 ", lhs, ", ", rhs);
+				store("%"+result, retAt);
+			}else {
+				int result = varNum++;
+				if (op instanceof Operation.Negation)
+					// subtract the value from 0
+					addLine("%", Integer.toString(result), " = ", "sub nsw i32 0, ", rhs);
+				else if (op instanceof Operation.Not) {
+					int compare = result;
+					int xor = varNum++;
+					result = varNum++;
+					addLine("%", Integer.toString(compare), " = icmp ne i32 ", rhs, ", 0");
+					addLine("%", Integer.toString(xor), " = xor i1 %", Integer.toString(compare), ", true");
+					addLine("%", Integer.toString(result), " = zext i1 %", Integer.toString(xor), " to i32");
+				}
+				store("%"+result, retAt);
+			}
 		}
 	}
 	

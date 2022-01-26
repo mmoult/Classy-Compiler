@@ -4,27 +4,7 @@ import classy.compiler.lexing.Lexer.Processor;
 import classy.compiler.lexing.Token.Type;
 
 public class CommentProcessor extends Processor {
-	protected int nestLevels = 0;
-
-	@Override
-	public boolean isValid(String check) {
-		if(check.equals("#")) {
-			if (!soFar.isEmpty() && soFar.charAt(soFar.length() - 1) == '|') {
-				nestLevels--;
-				if (nestLevels < 0)
-					throw new LexException("Excess nested string terminations in comment!");
-			}
-			return true;
-		}if(check.equals("|") && !soFar.isEmpty()) {
-			if (soFar.charAt(soFar.length() - 1) == '#')
-				nestLevels++; //open a new level
-			return true;
-		}
-		
-		if (soFar.startsWith("#"))
-			return true;
-		return false;
-	}
+	protected int nestLevel = 0;
 
 	@Override
 	public Type getType() {
@@ -32,18 +12,60 @@ public class CommentProcessor extends Processor {
 	}
 	
 	@Override
-	public boolean lineTerminated() {
-		boolean terminated = nestLevels == 0;
-		if (!terminated)
-			soFar += '\n';
-		
-		return terminated;
-	}
-	
-	@Override
 	public void clear() {
 		super.clear();
-		nestLevels = 0;
+		nestLevel = 0;
+	}
+
+	@Override
+	public String add(String check) {
+		// We are going to attempt to add all chars in check
+		int i=0;
+		// A comment must start with either # or #|
+		if (nestLevel == 0) {
+			if (charAt(check, 0) != '#')
+				return check;
+			
+			i++;
+			if (charAt(check, 1) == '|') {
+				nestLevel++;
+				i++; // we are now checking char at index 2
+			}else
+				nestLevel = -1; // indicating a single-line comment
+		}
+		
+		for (; i<check.length(); i++) {
+			char c = check.charAt(i);
+			
+			if (nestLevel != -1 && c == '#' && charAt(check, i + 1) == '|') {
+				// increase a level
+				nestLevel++;
+				i++;
+			}else if (nestLevel != -1 && c == '|' && charAt(check, i + 1) == '#') {
+				// decrease a level
+				if (nestLevel == 0)
+					throw new LexException("Excess nested string terminations in comment, \"",
+							(soFar + check.substring(0, i + 1)), "\"!");
+				nestLevel--;
+				i++;
+			}else if (c == '\n' && nestLevel <= 0)
+				break; // a new line signals a ready-to-terminate comment is finished
+		}
+		soFar += check.substring(0, i);
+		return check.substring(i);
+	}
+	
+	protected char charAt(String check, int index) {
+		if (index >= check.length() || index < 0)
+			// Since we just need this character for matching, we don't care if we go
+			//  out of bounds with this check.
+			return '\0';
+		return check.charAt(index);
+	}
+
+	@Override
+	public String description() {
+		return "comment";
 	}
 
 }

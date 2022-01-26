@@ -14,21 +14,35 @@ public class Token {
 	}
 	
 	public enum Type {
+		// basic
 		COMMENT,
 		OPEN_BRACE,
+		NEW_LINE,
+		SPACE,
+		// expressions
 		CLOSE_BRACE,
 		IDENTIFIER,
 		PERIOD,
 		COMMA,
-		ASSIGN,
-		SPACE,
-		NEW_LINE,
 		NUMBER,
 		OPEN_PAREN,
 		CLOSE_PAREN,
 		SEMICOLON,
-		
+		// operations
+		PLUS,
+		MINUS,
+		STAR,
+		SLASH,
+		NEQUAL,
+		EQUAL,
+		LESS_THAN,
+		LESS_EQUAL,
+		GREATER_THAN,
+		GREATER_EQUAL,
+		BANG,
+		// constructs
 		LET,
+		ASSIGN,
 		IF,
 		ELSE,
 		LAMBDA,

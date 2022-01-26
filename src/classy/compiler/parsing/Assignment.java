@@ -4,12 +4,13 @@ import java.util.List;
 
 import classy.compiler.lexing.Token;
 
-public class Assignment extends Expression implements NestingExpression {
+public class Assignment extends Expression {
+	protected Block parent;
 	protected String varName;
 	protected Value value;
 	
-	public Assignment(NestingExpression parent) {
-		super(parent);
+	public Assignment(Block parent) {
+		this.parent = parent;
 	}
 
 	@Override
@@ -31,7 +32,7 @@ public class Assignment extends Expression implements NestingExpression {
 					it.token(), " found instead.");
 		it.next(end);
 		
-		value = new Value(this);
+		value = new Value();
 		value.parse(it, end);
 	}
 	
@@ -58,10 +59,9 @@ public class Assignment extends Expression implements NestingExpression {
 	public Value getValue() {
 		return value;
 	}
-
-	@Override
-	public List<Expression> getNested() {
-		return List.of(value);
+	
+	public Block getParent() {
+		return parent;
 	}
 
 }

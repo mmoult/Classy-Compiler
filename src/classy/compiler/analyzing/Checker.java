@@ -6,11 +6,14 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import classy.compiler.CompileException;
+import classy.compiler.lexing.Token;
 import classy.compiler.parsing.Assignment;
+import classy.compiler.parsing.BinOp;
 import classy.compiler.parsing.Block;
 import classy.compiler.parsing.Expression;
-import classy.compiler.parsing.NestingExpression;
+import classy.compiler.parsing.Literal;
 import classy.compiler.parsing.Reference;
+import classy.compiler.parsing.Subexpression;
 import classy.compiler.parsing.Value;
 
 public class Checker {
@@ -74,6 +77,45 @@ public class Checker {
 			// If all in the body passed the check, then we can try to reduce
 			((Block)e).reduce();
 		}
+		
+		if (e instanceof BinOp) {
+			// If both of the arguments to the operation are integer literals, we can collapse this.
+			// We had to check after the children were checked since they could have been in blocks
+			//  that would now be reduced.
+			BinOp op = (BinOp)e;
+			Value lhs = op.getLHS();
+			Value rhs = op.getRHS();
+			if (lhs.getSubexpressions().size() == 1 &&
+					lhs.getSubexpressions().get(0) instanceof Literal &&
+			rhs.getSubexpressions().size() == 1 &&
+					rhs.getSubexpressions().get(0) instanceof Literal) {
+				int left = Integer.parseInt(((Literal)lhs.getSubexpressions().get(0)).getToken().getValue());
+				int right = Integer.parseInt(((Literal)rhs.getSubexpressions().get(0)).getToken().getValue());
+				int result = 0;
+				if (op instanceof BinOp.Addition)
+					result = left + right;
+				else if (op instanceof BinOp.Subtraction)
+					result = left - right;
+				else if (op instanceof BinOp.Multiplication)
+					result = left * right;
+				else if (op instanceof BinOp.Division)
+					result = left / right;
+				// remove self from the parent and replace with a literal
+				Value parent = op.getParent();
+				int found = parent.getSubexpressions().indexOf(op);
+				if (found != -1) {
+					parent.getSubexpressions().remove(found);
+					class OpenLiteral extends Literal {
+						public OpenLiteral(Value parent, Token t) {
+							super(parent);
+							this.token = t;
+						}
+					}
+					Literal lit = new OpenLiteral(parent, new Token(""+result, Token.Type.NUMBER, -1, -1));					
+					parent.getSubexpressions().add(found, lit);
+				}
+			}
+		}
 	}
 	
 	public void check(Value program, boolean optimize) {
@@ -94,11 +136,11 @@ public class Checker {
 				removeList.add(var);
 			else if (var.references.size() == 1) {
 				// Replace the reference with the value
-				Expression ref = var.references.get(0);
-				List<Expression> subList = ref.getParent().getNested();
+				Reference ref = var.references.get(0);
+				List<Subexpression> subList = ref.getParent().getSubexpressions();
 				int replaceAt = subList.indexOf(ref);
 				subList.remove(replaceAt);
-				subList.add(replaceAt, var.value);
+				subList.addAll(replaceAt, var.value.getSubexpressions());
 				
 				// get rid of the assignment for an unused variable
 				removeList.add(var);
@@ -106,10 +148,9 @@ public class Checker {
 		}
 		for (Variable var: removeList) {
 			// We need to delete it at its source first
-			NestingExpression parent = var.source.getParent();
-			parent.getNested().remove(var.source);
-			if (parent instanceof Block)
-				((Block)parent).reduce();
+			Block parent = var.source.getParent();
+			parent.getBody().remove(var.source);
+			parent.reduce();
 			// then we can remove it from the variables list to complete the change
 			variables.remove(var);
 		}

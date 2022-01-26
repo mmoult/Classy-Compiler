@@ -5,15 +5,15 @@ import java.util.List;
 
 import classy.compiler.lexing.Token;
 
-public class Block extends Expression implements NestingExpression {
+public class Block extends Subexpression {
 	protected boolean impliedBounds = false;
 	protected List<Expression> body = new ArrayList<>();
 	
-	public Block(NestingExpression parent) {
-		super(parent);
+	public Block() {
+		super(null);
 	}
 	
-	public Block(NestingExpression parent, boolean impliedBounds) {
+	public Block(Value parent, boolean impliedBounds) {
 		super(parent);
 		this.impliedBounds = impliedBounds;
 	}
@@ -67,6 +67,8 @@ public class Block extends Expression implements NestingExpression {
 							" encountered.");
 			}
 		}
+		if (firstValue == null)
+			throw new ParseException("Missing value in block beginning with ", it.tokens.get(start), "!");
 	}
 	
 	public boolean reduce() {
@@ -74,13 +76,13 @@ public class Block extends Expression implements NestingExpression {
 		// a value, then we can transfer the contents up to the parent and
 		// dissolve this.
 		if (body.size() == 1 && parent instanceof Value) {
-			Value par = (Value)parent;
-			List<Expression> sub = par.getSubexpressions();
+			List<Subexpression> sub = parent.getSubexpressions();
 			int found = sub.indexOf(this);
 			if (found != -1) {
 				sub.remove(found);
-				sub.add(body.get(0));
-				body.get(0).parent = par;
+				// Because of our post parsing analysis, we know that if there is only
+				//  one child in the body, it must be a value.
+				sub.add((Subexpression)body.get(0));
 				return true;
 			}
 		}
@@ -89,6 +91,15 @@ public class Block extends Expression implements NestingExpression {
 	
 	public List<Expression> getBody() {
 		return body;
+	}
+	
+	public Value getParent() {
+		return parent;
+	}
+
+	@Override
+	public boolean isLink() {
+		return false;
 	}
 	
 	@Override
@@ -109,11 +120,6 @@ public class Block extends Expression implements NestingExpression {
 		buf.append(getIndents(indents));
 		buf.append("}");
 		return buf.toString();
-	}
-
-	@Override
-	public List<Expression> getNested() {
-		return body;
 	}
 
 }

@@ -33,7 +33,7 @@ public class Parser {
 			throw new ParseException("Implied block at top file level terminated prematurely!");
 	}
 	
-	public static List<Expression> parse(TokenIterator it, int end, NestingExpression parent) {
+	public static List<Expression> parse(TokenIterator it, int end, Block parent) {
 		List<Expression> expressions = new ArrayList<>();
 		
 		while(it.index < end) {
@@ -44,7 +44,7 @@ public class Parser {
 			if (it.match(Token.Type.LET, end))
 				found = new Assignment(parent);
 			else
-				found = new Value(parent);
+				found = new Value();
 			
 			found.parse(it, end); // then we extract it proper
 			expressions.add(found);

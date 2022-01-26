@@ -4,12 +4,12 @@ import java.util.List;
 
 import classy.compiler.lexing.Token;
 
-public class If extends Expression implements NestingExpression {
+public class If extends Subexpression {
 	protected Value condition;
 	protected Value then;
 	protected Value else_;
 	
-	public If(NestingExpression parent) {
+	public If(Value parent) {
 		super(parent);
 	}
 
@@ -22,22 +22,22 @@ public class If extends Expression implements NestingExpression {
 		it.next(end);
 		
 		// First we must encounter the condition. This condition is a value
-		condition = new Value(this);
+		condition = new Value();
 		condition.parse(it, end);
 		
 		// Now we will encounter two values. The first is the then condition.
-		then = new Value(this);
+		then = new Value();
 		then.parse(it, end);
 		
 		// Now we can either see an "else" token, in which case a following block
 		// must have an explicit bound, or we can see no else and an implicit block
 		if (it.match(Token.Type.ELSE, end)) {
 			it.next(end);
-			Block implicit = new Block(this, true);
+			Block implicit = new Block(null, true);
 			implicit.parse(it, end);
-			else_ = new Value(this, implicit);
+			else_ = new Value(null, implicit);
 		} else {
-			else_ = new Value(this);
+			else_ = new Value();
 			else_.parse(it, end);
 		}
 	}
@@ -60,11 +60,6 @@ public class If extends Expression implements NestingExpression {
 		upper.add(else_);
 		return upper;
 	}
-
-	@Override
-	public List<Expression> getNested() {
-		return List.of(condition, then, else_);
-	}
 	
 	@Override
 	public String pretty(int indents) {
@@ -78,6 +73,11 @@ public class If extends Expression implements NestingExpression {
 		buf.append("else ");
 		buf.append(else_.pretty(indents + 1));
 		return buf.toString();
+	}
+
+	@Override
+	public boolean isLink() {
+		return false;
 	}
 
 }
