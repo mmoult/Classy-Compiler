@@ -1,10 +1,13 @@
 package classy.compiler.translation;
 
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.Set;
 
 import classy.compiler.analyzing.Variable;
@@ -57,19 +60,31 @@ public class Translator {
 	
 	public void translate(Value program) {
 		outLines = new ArrayList<>();
-		addLine("define dso_local i32 @main() #0 {");
-		deltaIndent(1);
-		// We want to put the return in varNum
-		int retAt = allocate();
-		//
-		for (Expression e: program.getSubexpressions()) {
-			translate(e, ""+retAt);
+		// insert the itos.ll file, which is needed to print the result of main
+		Scanner scan = null;
+		try {
+			scan = new Scanner(new File("src/libs/itos.ll"));
+			while (scan.hasNextLine())
+				addLine(scan.nextLine());
+			scan.close();
+			
+			addLine("define dso_local i32 @main() #0 {");
+			deltaIndent(1);
+			// We want to put the return in varNum
+			int retAt = allocate();
+			//
+			for (Expression e: program.getSubexpressions()) {
+				translate(e, ""+retAt);
+			}
+			//
+			int ret = load(""+retAt);
+			addLine("call void @itos(i32 %", Integer.toString(ret), ")");
+			addLine("ret i32 0");
+			deltaIndent(-1);
+			addLine("}");
+		} catch (FileNotFoundException e1) {
+			throw new RuntimeException("Could not find requisite file: \"libs/itos.ll\"!");
 		}
-		//
-		int ret = load(""+retAt);
-		addLine("ret i32 %", Integer.toString(ret));
-		deltaIndent(-1);
-		addLine("}");
 	}
 	
 	protected void translate(Expression e, String retAt) {

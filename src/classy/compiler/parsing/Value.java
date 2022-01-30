@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.TreeSet;
 
 import classy.compiler.lexing.Token;
-import classy.compiler.parsing.Operation.Negation;
 
 
 public class Value extends Subexpression {
