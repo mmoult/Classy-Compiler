@@ -5,7 +5,7 @@
 declare i32 @puts(i8* nocapture) nounwind
 
 ; Function Attrs: noinline nounwind optnone uwtable
-define dso_local void @itos(i32 %0) #0 {
+define dso_local void @printi(i32 %0) #0 {
   %num = alloca i32, align 4
   store i32 %0, i32* %num, align 4
   %offs = alloca i32, align 4

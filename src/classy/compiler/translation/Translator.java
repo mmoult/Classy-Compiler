@@ -63,7 +63,7 @@ public class Translator {
 		// insert the itos.ll file, which is needed to print the result of main
 		Scanner scan = null;
 		try {
-			scan = new Scanner(new File("src/libs/itos.ll"));
+			scan = new Scanner(new File("src/libs/printi.ll"));
 			while (scan.hasNextLine())
 				addLine(scan.nextLine());
 			scan.close();
@@ -78,7 +78,7 @@ public class Translator {
 			}
 			//
 			int ret = load(""+retAt);
-			addLine("call void @itos(i32 %", Integer.toString(ret), ")");
+			addLine("call void @printi(i32 %", Integer.toString(ret), ")");
 			addLine("ret i32 0");
 			deltaIndent(-1);
 			addLine("}");
@@ -168,6 +168,7 @@ public class Translator {
 				}
 				int result = varNum++;
 				String operation = "add";
+				boolean typical = true;
 				if (op instanceof BinOp.Addition)
 					operation = "add nsw";
 				else if (op instanceof BinOp.Subtraction)
@@ -176,7 +177,34 @@ public class Translator {
 					operation = "mul nsw";
 				else if (op instanceof BinOp.Division)
 					operation = "sdiv";
-				addLine("%", Integer.toString(result), " = ", operation, " i32 ", lhs, ", ", rhs);
+				else if (op instanceof BinOp.Modulus)
+					operation = "srem";
+				else {
+					typical = false;
+					// All of these operations are binary that include an int extension
+					if (op instanceof BinOp.Equal)
+						operation = "eq";
+					else if (op instanceof BinOp.NEqual)
+						operation = "ne";
+					else if (op instanceof BinOp.LessThan)
+						operation = "slt";
+					else if (op instanceof BinOp.LessEqual)
+						operation = "sle";
+					else if (op instanceof BinOp.GreaterThan)
+						operation = "sgt";
+					else if (op instanceof BinOp.GreaterEqual)
+						operation = "sge";
+					
+					int compare = result;
+					addLine("%", Integer.toString(compare), " = icmp ", operation, " i32 ", lhs, ", ", rhs);
+					int extend = varNum++;
+					addLine("%", Integer.toString(extend), " = xor i1 %", Integer.toString(compare), ", true");
+					result = varNum++;
+					addLine("%", Integer.toString(result), " = zext i1 %", Integer.toString(extend), " to i32");
+				}
+				
+				if (typical)
+					addLine("%", Integer.toString(result), " = ", operation, " i32 ", lhs, ", ", rhs);
 				store("%"+result, retAt);
 			}else {
 				int result = varNum++;

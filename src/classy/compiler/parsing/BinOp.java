@@ -110,6 +110,116 @@ public abstract class BinOp extends Operation {
 		}
 	}
 	
+	public static class Modulus extends BinOp {
+		public Modulus(Value parent) {
+			super(parent, Token.Type.PERCENT);
+		}
+		
+		@Override
+		public Float getPrecedence() {
+			return 1f;
+		}
+
+		@Override
+		protected String prettyOperation() {
+			return "%";
+		}
+	}
+	
+	public static class Equal extends BinOp {
+		public Equal(Value parent) {
+			super(parent, Token.Type.EQUAL);
+		}
+		
+		@Override
+		public Float getPrecedence() {
+			return 5f;
+		}
+
+		@Override
+		protected String prettyOperation() {
+			return "==";
+		}
+	}
+	
+	public static class NEqual extends BinOp {
+		public NEqual(Value parent) {
+			super(parent, Token.Type.NEQUAL);
+		}
+		
+		@Override
+		public Float getPrecedence() {
+			return 5f;
+		}
+
+		@Override
+		protected String prettyOperation() {
+			return "<>";
+		}
+	}
+	
+	public static class LessThan extends BinOp {
+		public LessThan(Value parent) {
+			super(parent, Token.Type.LESS_THAN);
+		}
+		
+		@Override
+		public Float getPrecedence() {
+			return 4f;
+		}
+
+		@Override
+		protected String prettyOperation() {
+			return "<";
+		}
+	}
+	public static class LessEqual extends BinOp {
+		public LessEqual(Value parent) {
+			super(parent, Token.Type.LESS_EQUAL);
+		}
+		
+		@Override
+		public Float getPrecedence() {
+			return 4f;
+		}
+
+		@Override
+		protected String prettyOperation() {
+			return "<=";
+		}
+	}
+	
+	public static class GreaterThan extends BinOp {
+		public GreaterThan(Value parent) {
+			super(parent, Token.Type.GREATER_THAN);
+		}
+		
+		@Override
+		public Float getPrecedence() {
+			return 4f;
+		}
+
+		@Override
+		protected String prettyOperation() {
+			return ">";
+		}
+	}
+	public static class GreaterEqual extends BinOp {
+		public GreaterEqual(Value parent) {
+			super(parent, Token.Type.GREATER_EQUAL);
+		}
+		
+		@Override
+		public Float getPrecedence() {
+			return 4f;
+		}
+
+		@Override
+		protected String prettyOperation() {
+			return ">=";
+		}
+	}
+	
 	@Override
 	public String pretty(int indents) {
 		StringBuffer buf = new StringBuffer("(");

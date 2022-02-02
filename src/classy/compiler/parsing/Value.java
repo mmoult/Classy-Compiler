@@ -32,7 +32,7 @@ public class Value extends Subexpression {
 			Subexpression found;
 			
 			try {
-				if (it.match(Token.Type.SEMICOLON, end))
+				if (it.match(Token.Type.SEMICOLON, end) && !subexpressions.isEmpty())
 					break; // value does not go over semicolons
 			}catch(ParseException endFound) {
 				break; // since we reached the end
@@ -146,6 +146,20 @@ public class Value extends Subexpression {
 			return new BinOp.Division(this);
 		if (it.match(Token.Type.BANG, end))
 			return new Operation.Not(this);
+		if (it.match(Token.Type.PERCENT, end))
+			return new BinOp.Modulus(this);
+		if (it.match(Token.Type.EQUAL, end))
+			return new BinOp.Equal(this);
+		if (it.match(Token.Type.NEQUAL, end))
+			return new BinOp.NEqual(this);
+		if (it.match(Token.Type.LESS_THAN, end))
+			return new BinOp.LessThan(this);
+		if (it.match(Token.Type.LESS_EQUAL, end))
+			return new BinOp.LessEqual(this);
+		if (it.match(Token.Type.GREATER_THAN, end))
+			return new BinOp.GreaterThan(this);
+		if (it.match(Token.Type.GREATER_EQUAL, end))
+			return new BinOp.GreaterEqual(this);
 		
 		throw new ParseException("Expression beginning with ", it.token(), " could not be typified!");
 	}

@@ -32,6 +32,7 @@ public class Token {
 		PLUS,
 		MINUS,
 		STAR,
+		PERCENT,
 		SLASH,
 		NEQUAL,
 		EQUAL,
