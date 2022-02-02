@@ -21,6 +21,8 @@ public class IdentifierProcessor extends Processor {
 			return Token.Type.ELSE;
 		case "lambda":
 			return Token.Type.LAMBDA;
+		case "void":
+			return Token.Type.VOID;
 		}
 		return Token.Type.IDENTIFIER;
 	}

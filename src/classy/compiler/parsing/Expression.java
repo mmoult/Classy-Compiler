@@ -1,8 +1,5 @@
 package classy.compiler.parsing;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public abstract class Expression {
 	
 	/**
@@ -16,16 +13,6 @@ public abstract class Expression {
 	 * @param end the index of the token list that may not be reached in processing.
 	 */
 	public abstract void parse(TokenIterator it, int end);
-	
-	/**
-	 * Should be overridden in subclasses to return all nested expressions in
-	 * sequential order. These will be checked by the {@link Checker}.
-	 * @return the list of expressions to check, in order. Default returns an
-	 * empty list.
-	 */
-	public List<Expression> toCheck() {
-		return new ArrayList<>();
-	}
 	
 	/**
 	 * Creates a pretty print representation of this structure, and all nested

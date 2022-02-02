@@ -1,7 +1,5 @@
 package classy.compiler.parsing;
 
-import java.util.List;
-
 import classy.compiler.lexing.Token;
 
 public class If extends Subexpression {
@@ -50,15 +48,6 @@ public class If extends Subexpression {
 	}
 	public Value getElse() {
 		return else_;
-	}
-	
-	@Override
-	public List<Expression> toCheck() {
-		List<Expression> upper = super.toCheck();
-		upper.add(condition);
-		upper.add(then);
-		upper.add(else_);
-		return upper;
 	}
 	
 	@Override

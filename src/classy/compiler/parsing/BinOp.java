@@ -38,14 +38,6 @@ public abstract class BinOp extends Operation {
 		return lhs;
 	}
 	
-	@Override
-	public List<Expression> toCheck() {
-		List<Expression> upper = super.toCheck();
-		upper.add(lhs);
-		return upper;
-	}
-	
-	
 	public static class Addition extends BinOp {
 		public Addition(Value parent) {
 			super(parent, Token.Type.PLUS);

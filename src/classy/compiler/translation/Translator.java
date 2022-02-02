@@ -11,6 +11,7 @@ import java.util.Scanner;
 import java.util.Set;
 
 import classy.compiler.analyzing.Variable;
+import classy.compiler.parsing.ArgumentList;
 import classy.compiler.parsing.Assignment;
 import classy.compiler.parsing.BinOp;
 import classy.compiler.parsing.Block;
@@ -26,6 +27,11 @@ public class Translator {
 	private List<String> outLines;
 	private int indentation = 0;
 	private int varNum = 1;
+	
+	// out lines locations
+	private boolean declareFx = false;
+	private int fxLocation;
+	
 	private Map<Expression, String> varMangle;
 
 	
@@ -49,9 +55,10 @@ public class Translator {
 				useName = name + cnt;
 			}
 			// Great! we found a name we can use.
-			varMangle.put(var.getSource(), useName);
-			for (Expression ref: var.getRef())
-				varMangle.put(ref, useName);
+			if (var.getSource() != null) {
+				namesUsed.add(useName);
+				varMangle.put(var.getSource(), useName);
+			}
 		}
 		
 		// Now begin the translation process
@@ -60,7 +67,7 @@ public class Translator {
 	
 	public void translate(Value program) {
 		outLines = new ArrayList<>();
-		// insert the itos.ll file, which is needed to print the result of main
+		// insert the printi.ll file, which is needed to print the result of main
 		Scanner scan = null;
 		try {
 			scan = new Scanner(new File("src/libs/printi.ll"));
@@ -68,7 +75,10 @@ public class Translator {
 				addLine(scan.nextLine());
 			scan.close();
 			
-			addLine("define dso_local i32 @main() #0 {");
+			// This is where the function declaration location is
+			fxLocation = outLines.size();
+			
+			addLine("define dso_local i32 @main() {");
 			deltaIndent(1);
 			// We want to put the return in varNum
 			int retAt = allocate();
@@ -127,18 +137,107 @@ public class Translator {
 			//addLine("store i32 ", number, ", i32* %", retAt, ", align 4");
 			store(number, retAt);
 		}else if (e instanceof Assignment) {
-			// We want to find what we should save this variable name as
 			Assignment asgn = (Assignment)e;
+			// We want to find what we should save this variable name as
 			String name = varMangle.get(asgn);
-			allocate(name);
-			translate(asgn.getValue(), name);
+			
+			// First, we must find if this is a value assignment or a function assignment
+			if (asgn.getParamList() == null) {
+				allocate(name);
+				translate(asgn.getValue(), name);
+			}else {
+				declareFx = true; // we are going to make a function declaration
+				int prevIndent = this.indentation;
+				int prevVarNum = this.varNum;
+				this.indentation = 0;
+				this.varNum = 1;
+				
+				String[] lineCmps = new String[4 + (2 * asgn.getParamList().size())];
+				lineCmps[0] = "define dso_local i32 @";
+				lineCmps[1] = name;
+				lineCmps[2] = "(";
+				int i = 3;
+				for (String param: asgn.getParamList()) {
+					if (i > 3)
+						lineCmps[i++] = ", i32 %";
+					else
+						lineCmps[i++] = "i32 %";
+					lineCmps[i++] = param;
+				}
+				lineCmps[i++] = ") {";
+				addLine(lineCmps);
+				deltaIndent(1);
+				int fRet = allocate();
+				
+				translate(asgn.getValue(), fRet+"");
+				
+				int loaded = load(fRet+"");
+				addLine("ret i32 %", Integer.toString(loaded));
+				deltaIndent(-1);
+				addLine("}");
+				addLine();
+				this.indentation = prevIndent;
+				this.varNum = prevVarNum;
+				// then the function declaration is done
+				declareFx = false;
+			}
 		}else if (e instanceof Reference) {
 			// Reference needs to copy from the variable to the return address
 			Reference ref = (Reference)e;
-			String name = varMangle.get(ref);
-			// This requires a load and then a store
-			int value = load(name);
-			store("%"+value, retAt);
+			String name; // the name used
+			if (varMangle.containsKey(ref.getLinkedTo()))
+				name = varMangle.get(ref.getLinkedTo());
+			else // function params will not be in mangle since they are local
+				name = ref.getVarName();
+			if (ref.getArgument() == null) {
+				// Regular reference
+				if (!declareFx) {
+					// This requires a load and then a store
+					int value = load(name);
+					store("%"+value, retAt);
+				}else {
+					// if we are in a function, we can just use the const argument
+					store("%"+name, retAt);
+				}
+			}else {
+				// Function call
+				Value argument = ref.getArgument();
+				Value[] args;
+				if (argument.getSubexpressions().get(0) instanceof ArgumentList) {
+					ArgumentList ls = (ArgumentList)argument.getSubexpressions().get(0);
+					args = ls.getArgs().toArray(new Value[] {});
+				}else
+					args = new Value[] {argument};
+				
+				int[] argsAt = new int[args.length];
+				int i=0;
+				for (Value arg: args) {
+					int alloc = allocate();
+					translate(arg, alloc+"");
+					argsAt[i] = load(alloc+"");
+					i++;
+				}
+				
+				int returned = varNum++;
+				String[] callComps = new String[6 + 2*args.length];
+				callComps[0] = "%";
+				callComps[1] = Integer.toString(returned);
+				callComps[2] = " = call i32 @";
+				callComps[3] = ref.getVarName();
+				callComps[4] = "(";
+				int j = 5;
+				for (i=0; i<args.length; i++) {
+					if (j == 5)
+						callComps[j++] = "i32 %";
+					else
+						callComps[j++] = ", i32 %";
+					callComps[j++] = Integer.toString(argsAt[i]);
+				}
+				callComps[j] = ")";
+				addLine(callComps);
+				store("%"+returned, retAt);
+			}
+			
 		}else if (e instanceof Operation) {
 			Operation op = (Operation)e;
 			String rhs;
@@ -197,10 +296,8 @@ public class Translator {
 					
 					int compare = result;
 					addLine("%", Integer.toString(compare), " = icmp ", operation, " i32 ", lhs, ", ", rhs);
-					int extend = varNum++;
-					addLine("%", Integer.toString(extend), " = xor i1 %", Integer.toString(compare), ", true");
 					result = varNum++;
-					addLine("%", Integer.toString(result), " = zext i1 %", Integer.toString(extend), " to i32");
+					addLine("%", Integer.toString(result), " = zext i1 %", Integer.toString(compare), " to i32");
 				}
 				
 				if (typical)
@@ -213,11 +310,9 @@ public class Translator {
 					addLine("%", Integer.toString(result), " = ", "sub nsw i32 0, ", rhs);
 				else if (op instanceof Operation.Not) {
 					int compare = result;
-					int xor = varNum++;
 					result = varNum++;
-					addLine("%", Integer.toString(compare), " = icmp ne i32 ", rhs, ", 0");
-					addLine("%", Integer.toString(xor), " = xor i1 %", Integer.toString(compare), ", true");
-					addLine("%", Integer.toString(result), " = zext i1 %", Integer.toString(xor), " to i32");
+					addLine("%", Integer.toString(compare), " = icmp eq i32 ", rhs, ", 0");
+					addLine("%", Integer.toString(result), " = zext i1 %", Integer.toString(compare), " to i32");
 				}
 				store("%"+result, retAt);
 			}
@@ -242,7 +337,10 @@ public class Translator {
 	}
 	
 	protected void addLine(String... line) {
-		outLines.add(indent(line));
+		if (declareFx)
+			outLines.add(fxLocation++, indent(line));
+		else
+			outLines.add(indent(line));
 	}
 	protected void addLabel(String label) {
 		indentation--;

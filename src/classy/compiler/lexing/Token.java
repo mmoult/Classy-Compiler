@@ -28,6 +28,7 @@ public class Token {
 		OPEN_PAREN,
 		CLOSE_PAREN,
 		SEMICOLON,
+		VOID,
 		// operations
 		PLUS,
 		MINUS,

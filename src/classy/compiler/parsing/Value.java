@@ -42,14 +42,36 @@ public class Value extends Subexpression {
 				// We want to create a new value from the open to the close
 				it.next(end);
 				int foundEnd = it.find(Token.Type.CLOSE_PAREN, end);
-				found = new Value(this);
-				found.parse(it, foundEnd);
+				Value val = new Value(this);
+				val.parse(it, foundEnd);
 				// We need to verify that the inner value ended at the expected close
 				if (it.index != foundEnd)
 					throw new ParseException("Unexpected token ", it.token(),
 							" in value! Close paranthesis ')' expected instead.");
+				
+				// Similarly to how we reduce blocks, if there is only one element in the value,
+				// we can collapse the value and add it directly
+				// We do this regardless of whether optimize is specified, since there is no use
+				//  to having redundant and excessive parentheses. 
+				if (val.subexpressions.size() == 1) 
+					found = val.subexpressions.get(0);
+				else
+					found = val;
+				
 				it.next(end); // to get past the close
-			}else {
+			}else if (it.match(Token.Type.COMMA, end)) {
+				// We have an argument list here!
+				// Put everything found thus far into a value as the first param to the list
+				ArgumentList ls = new ArgumentList(this);
+				Subexpression[] subs = {};
+				Value val = new Value(null, subexpressions.toArray(subs));
+				subexpressions.clear();
+				ls.addArg(val);
+				it.next(end);
+				ls.parse(it, end);
+				subexpressions.add(ls);
+				break; // list finishes the value, so we move on
+			} else {
 				try {
 					found = typify(it, end);
 				}catch(ParseException unknown) {
@@ -77,22 +99,13 @@ public class Value extends Subexpression {
 					// If in the end, the block only had one expression, it should be
 					// replaced with that expression, rather than using a block
 					((Block)found).reduce();
-				}else if (found instanceof Operation)
+				}else if (found instanceof Operation || found instanceof Reference)
 					endReady = false;
 			}
 		}
 		
-		// Similarly to how we reduce blocks, if this value only has one child, which is
-		//  a value, it can be reduced.
-		if (subexpressions.size() == 1) {
-			Subexpression first = subexpressions.get(0);
-			if (first instanceof Value) {
-				Value val = (Value)first;
-				subexpressions = val.subexpressions;
-			}
-			
+		if (subexpressions.size() == 1)
 			return; // If there was only one element, chaining is unneeded.
-		}
 		
 		// Lastly, we want to do a run through the subexpressions for chaining expressions
 		//  to find their arguments.
@@ -166,13 +179,6 @@ public class Value extends Subexpression {
 	
 	public List<Subexpression> getSubexpressions() {
 		return subexpressions;
-	}
-	
-	@Override
-	public List<Expression> toCheck() {
-		List<Expression> upper = super.toCheck();
-		upper.addAll(subexpressions);
-		return upper;
 	}
 	
 	@Override

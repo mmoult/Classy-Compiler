@@ -4,6 +4,8 @@ import classy.compiler.lexing.Token;
 
 public class Reference extends Subexpression {
 	protected String varName;
+	protected Assignment linkedTo;
+	protected Value arguments;
 	
 	public Reference(Value parent) {
 		super(parent);
@@ -29,6 +31,20 @@ public class Reference extends Subexpression {
 	
 	public Value getParent() {
 		return parent;
+	}
+	
+	public void setLinkedTo(Assignment asgn) {
+		this.linkedTo = asgn;
+	}
+	public Assignment getLinkedTo() {
+		return linkedTo;
+	}
+	
+	public void setArgument(Value val) {
+		this.arguments = val;
+	}
+	public Value getArgument() {
+		return this.arguments;
 	}
 	
 	@Override

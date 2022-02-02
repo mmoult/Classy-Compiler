@@ -5,7 +5,7 @@
 declare i32 @puts(i8* nocapture) nounwind
 
 ; Function Attrs: noinline nounwind optnone uwtable
-define dso_local void @printi(i32 %0) #0 {
+define dso_local void @printi(i32 %0) {
   %num = alloca i32, align 4
   store i32 %0, i32* %num, align 4
   %offs = alloca i32, align 4
@@ -23,7 +23,6 @@ thenneg:
   store i32 %nextoffs, i32* %offs, align 4
   br label %nextneg
 nextneg:
-
   ; We want to find out how many digits it will take to print out number
   %num1 = load i32, i32* %num, align 4
   %dupnum = alloca i32, align 4
@@ -50,7 +49,6 @@ afterdigits:
   %lastdig = sub nsw i32 %adddig, 1
   store i32 0, i32* %offs, align 4; Reset offs to 0, since we go backwards
   br label %fornum
-  
 fornum:
   %num2 = load i32, i32* %num, align 4
   %dig = srem i32 %num2, 10
@@ -67,7 +65,6 @@ fornum:
   store i32 %numdiv, i32* %num, align 4
   %numzero = icmp eq i32 %numdiv, 0
   br i1 %numzero, label %afternum, label %fornum
-  
 afternum:
   ; Convert [13 x i8]* to i8*...
   %string = getelementptr [13 x i8], [13 x i8]* @.str, i64 0, i64 0

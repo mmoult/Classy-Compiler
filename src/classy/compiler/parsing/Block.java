@@ -103,13 +103,6 @@ public class Block extends Subexpression {
 	}
 	
 	@Override
-	public List<Expression> toCheck() {
-		List<Expression> upper = super.toCheck();
-		upper.addAll(body);
-		return upper;
-	}
-	
-	@Override
 	public String pretty(int indents) {
 		StringBuffer buf = new StringBuffer("{\n");
 		for (Expression e: body) {

@@ -45,13 +45,6 @@ public abstract class Operation extends Subexpression {
 			throw new ParseException("Missing value after ", this, " in expression!");
 	}
 	
-	@Override
-	public List<Expression> toCheck() {
-		List<Expression> upper = super.toCheck();
-		upper.add(rhs);
-		return upper;
-	}
-	
 	protected String description() {
 		return "operator";
 	}
