@@ -5,12 +5,6 @@ bin/
 # Log file
 *.log
 
-# BlueJ files
-*.ctxt
-
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
-
 # Package Files #
 *.jar
 *.war
@@ -22,7 +16,14 @@ bin/
 
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
+
+# IDE files
 .classpath
 .project
 .settings/org.eclipse.jdt.core.prefs
 *.prefs
+
+# Debugging files
+test.classy
+test.exe.ll
+test.exe

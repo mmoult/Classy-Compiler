@@ -56,11 +56,15 @@ public class Checker {
 		}
 		for (Variable var: removeList) {
 			// We need to delete it at its source first
-			Block parent = var.source.getParent();
-			parent.getBody().remove(var.source);
-			parent.reduce();
-			// then we can remove it from the variables list to complete the change
-			variables.remove(var);
+			if (var.source == null) { // If there is no source, then this is a parameter
+				System.out.println("Warning: Unused parameter \"" + var.name + "\".");
+			}else {
+				Block parent = var.source.getParent();
+				parent.getBody().remove(var.source);
+				parent.reduce();
+				// then we can remove it from the variables list to complete the change
+				variables.remove(var);				
+			}
 		}
 	}
 	

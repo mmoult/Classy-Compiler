@@ -24,14 +24,9 @@ import classy.compiler.parsing.Subexpression;
 import classy.compiler.parsing.Value;
 
 public class Translator {
-	private List<String> outLines;
-	private int indentation = 0;
 	private int varNum = 1;
-	
-	// out lines locations
-	private boolean declareFx = false;
-	private int fxLocation;
-	
+	private int inFunction = 0;
+	protected LinePlacer lines;
 	private Map<Expression, String> varMangle;
 
 	
@@ -65,21 +60,20 @@ public class Translator {
 		translate(program);
 	}
 	
-	public void translate(Value program) {
-		outLines = new ArrayList<>();
+	public void translate(Value program) {		
 		// insert the printi.ll file, which is needed to print the result of main
 		Scanner scan = null;
 		try {
-			scan = new Scanner(new File("src/libs/printi.ll"));
+			List<String> topLines = new ArrayList<>();
+			scan = new Scanner(new File("libs/printi.ll"));
 			while (scan.hasNextLine())
-				addLine(scan.nextLine());
+				topLines.add(scan.nextLine());
 			scan.close();
 			
-			// This is where the function declaration location is
-			fxLocation = outLines.size();
+			lines = new LinePlacer(topLines);
 			
-			addLine("define dso_local i32 @main() {");
-			deltaIndent(1);
+			lines.addLine("define dso_local i32 @main() {");
+			lines.deltaIndent(1);
 			// We want to put the return in varNum
 			int retAt = allocate();
 			//
@@ -88,10 +82,10 @@ public class Translator {
 			}
 			//
 			int ret = load(""+retAt);
-			addLine("call void @printi(i32 %", Integer.toString(ret), ")");
-			addLine("ret i32 0");
-			deltaIndent(-1);
-			addLine("}");
+			lines.addLine("call void @printi(i32 %", Integer.toString(ret), ")");
+			lines.addLine("ret i32 0");
+			lines.deltaIndent(-1);
+			lines.addLine("}");
 		} catch (FileNotFoundException e1) {
 			throw new RuntimeException("Could not find requisite file: \"libs/itos.ll\"!");
 		}
@@ -114,23 +108,23 @@ public class Translator {
 			// since literals allocate it, we want to get our value back through a load
 			int loaded = load(""+cond);
 			int compare = varNum++;
-			addLine("%", Integer.toString(compare), " = icmp eq i32 %", Integer.toString(loaded),", 0");
+			lines.addLine("%", Integer.toString(compare), " = icmp eq i32 %", Integer.toString(loaded),", 0");
 			String tbranch = "then" + Integer.toString(compare);
 			String fbranch = "else" + Integer.toString(compare);
 			String next = "next" + Integer.toString(compare);
 			// branch to either the true or false case
-			addLine("br i1 %", Integer.toString(compare), ", label %", fbranch, ", label %", tbranch);
-			addLine();
+			lines.addLine("br i1 %", Integer.toString(compare), ", label %", fbranch, ", label %", tbranch);
+			lines.addLine();
 			
-			addLabel(tbranch);
+			lines.addLabel(tbranch);
 			translate(if_.getThen(), retAt);
-			addLine("br label %", next);
+			lines.addLine("br label %", next);
 			
-			addLabel(fbranch);
+			lines.addLabel(fbranch);
 			translate(if_.getElse(), retAt);
-			addLine("br label %", next);
+			lines.addLine("br label %", next);
 			
-			addLabel(next);
+			lines.addLabel(next);
 		}else if (e instanceof Literal) {
 			// store in our return the literal we find
 			String number = ((Literal)e).getToken().getValue();
@@ -146,11 +140,13 @@ public class Translator {
 				allocate(name);
 				translate(asgn.getValue(), name);
 			}else {
-				declareFx = true; // we are going to make a function declaration
-				int prevIndent = this.indentation;
+				// We are going to make a function declaration, which needs to be on the top
+				//  level. Thus, we start at the top scope, saving our old location to revert
+				//  back after
 				int prevVarNum = this.varNum;
-				this.indentation = 0;
 				this.varNum = 1;
+				this.inFunction++;
+				LinePlacer.State oldState = lines.getTop();
 				
 				String[] lineCmps = new String[4 + (2 * asgn.getParamList().size())];
 				lineCmps[0] = "define dso_local i32 @";
@@ -165,21 +161,22 @@ public class Translator {
 					lineCmps[i++] = param;
 				}
 				lineCmps[i++] = ") {";
-				addLine(lineCmps);
-				deltaIndent(1);
+				lines.addLine(lineCmps);
+				lines.deltaIndent(1);
 				int fRet = allocate();
 				
 				translate(asgn.getValue(), fRet+"");
 				
 				int loaded = load(fRet+"");
-				addLine("ret i32 %", Integer.toString(loaded));
-				deltaIndent(-1);
-				addLine("}");
-				addLine();
-				this.indentation = prevIndent;
+				lines.addLine("ret i32 %", Integer.toString(loaded));
+				lines.deltaIndent(-1);
+				lines.addLine("}");
+				lines.addLine();
+				
+				// then the function declaration is done. Restore the state
+				lines.revertState(oldState);
 				this.varNum = prevVarNum;
-				// then the function declaration is done
-				declareFx = false;
+				this.inFunction--;
 			}
 		}else if (e instanceof Reference) {
 			// Reference needs to copy from the variable to the return address
@@ -191,7 +188,7 @@ public class Translator {
 				name = ref.getVarName();
 			if (ref.getArgument() == null) {
 				// Regular reference
-				if (!declareFx) {
+				if (inFunction == 0) {
 					// This requires a load and then a store
 					int value = load(name);
 					store("%"+value, retAt);
@@ -234,7 +231,7 @@ public class Translator {
 					callComps[j++] = Integer.toString(argsAt[i]);
 				}
 				callComps[j] = ")";
-				addLine(callComps);
+				lines.addLine(callComps);
 				store("%"+returned, retAt);
 			}
 			
@@ -295,24 +292,24 @@ public class Translator {
 						operation = "sge";
 					
 					int compare = result;
-					addLine("%", Integer.toString(compare), " = icmp ", operation, " i32 ", lhs, ", ", rhs);
+					lines.addLine("%", Integer.toString(compare), " = icmp ", operation, " i32 ", lhs, ", ", rhs);
 					result = varNum++;
-					addLine("%", Integer.toString(result), " = zext i1 %", Integer.toString(compare), " to i32");
+					lines.addLine("%", Integer.toString(result), " = zext i1 %", Integer.toString(compare), " to i32");
 				}
 				
 				if (typical)
-					addLine("%", Integer.toString(result), " = ", operation, " i32 ", lhs, ", ", rhs);
+					lines.addLine("%", Integer.toString(result), " = ", operation, " i32 ", lhs, ", ", rhs);
 				store("%"+result, retAt);
 			}else {
 				int result = varNum++;
 				if (op instanceof Operation.Negation)
 					// subtract the value from 0
-					addLine("%", Integer.toString(result), " = ", "sub nsw i32 0, ", rhs);
+					lines.addLine("%", Integer.toString(result), " = ", "sub nsw i32 0, ", rhs);
 				else if (op instanceof Operation.Not) {
 					int compare = result;
 					result = varNum++;
-					addLine("%", Integer.toString(compare), " = icmp eq i32 ", rhs, ", 0");
-					addLine("%", Integer.toString(result), " = zext i1 %", Integer.toString(compare), " to i32");
+					lines.addLine("%", Integer.toString(compare), " = icmp eq i32 ", rhs, ", 0");
+					lines.addLine("%", Integer.toString(result), " = zext i1 %", Integer.toString(compare), " to i32");
 				}
 				store("%"+result, retAt);
 			}
@@ -321,46 +318,22 @@ public class Translator {
 	
 	protected int allocate() {
 		int retAt = varNum++;
-		addLine("%", Integer.toString(retAt), " = alloca i32, align 4");
+		lines.addLine("%", Integer.toString(retAt), " = alloca i32, align 4");
 		return retAt;
 	}
 	protected void allocate(String name) {
-		addLine("%", name, " = alloca i32, align 4");
+		lines.addLine("%", name, " = alloca i32, align 4");
 	}
 	protected void store(String what, String at) {
-		addLine("store i32 ", what, ", i32* %", at, ", align 4");
+		lines.addLine("store i32 ", what, ", i32* %", at, ", align 4");
 	}
 	protected int load(String from) {
 		int retAt = varNum++;
-		addLine("%", Integer.toString(retAt), " = load i32, i32* %", from, ", align 4");
+		lines.addLine("%", Integer.toString(retAt), " = load i32, i32* %", from, ", align 4");
 		return retAt;
 	}
 	
-	protected void addLine(String... line) {
-		if (declareFx)
-			outLines.add(fxLocation++, indent(line));
-		else
-			outLines.add(indent(line));
-	}
-	protected void addLabel(String label) {
-		indentation--;
-		addLine(label, ":");
-		indentation++;
-	}
-	
-	protected String indent(String... line) {
-		StringBuffer buf = new StringBuffer();
-		for (int i=0; i<indentation; i++)
-			buf.append("  ");
-		for (int i=0; i<line.length; i++)
-			buf.append(line[i]);
-		return buf.toString();
-	}
-	protected void deltaIndent(int indent) {
-		this.indentation += indent;
-	}
-	
 	public List<String> getOutLines() {
-		return outLines;
+		return lines.getOutLines();
 	}
 }

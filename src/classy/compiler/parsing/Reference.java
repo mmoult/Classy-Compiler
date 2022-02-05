@@ -49,7 +49,10 @@ public class Reference extends Subexpression {
 	
 	@Override
 	public String pretty(int indents) {
-		return varName;
+		if (arguments == null)
+			return varName;
+		else
+			return varName + arguments.pretty(indents);
 	}
 
 }

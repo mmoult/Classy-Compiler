@@ -21,6 +21,11 @@ import classy.compiler.parsing.Value;
 import classy.compiler.translation.Translator;
 
 public class Classy {
+	public static final String SAVE = "save";
+	public static final String VERBOSE = "verbose";
+	public static final String NO_OPT = "O0";
+	public static final String OUTPUT = "out";
+	
 	public static void main(String args[]) {
 		String pathName = null;
 		
@@ -33,19 +38,19 @@ public class Classy {
 				return;
 			case "-O0":		// turns off optimizations
 			case "-Opt0":
-				i = addFlag("Opt0", 0, flags, args, i);
+				i = addFlag(NO_OPT, 0, flags, args, i);
 				break;
 			case "-s":		// debug- saves intermediate files
 			case "-save":
-				i = addFlag("save", 0, flags, args, i);
+				i = addFlag(SAVE, 0, flags, args, i);
 				break;
 			case "-v":		// verbose- prints out execution information
 			case "-verbose":
-				i = addFlag("verbose", 0, flags, args, i);
+				i = addFlag(VERBOSE, 0, flags, args, i);
 				break;
 			// Flags with one argument
 			case "-o":		// names the output
-				i = addFlag("out", 1, flags, args, i);
+				i = addFlag(OUTPUT, 1, flags, args, i);
 				break;
 			default:
 				if (pathName == null)
@@ -80,7 +85,7 @@ public class Classy {
 		
 		// remove the file extension from the path name. This will be the module name
 		String moduleName;
-		if (!flags.containsKey("out")) {
+		if (!flags.containsKey(OUTPUT)) {
 			if (pathName == null)
 				moduleName = "a.out";
 			else if (pathName.indexOf('.') != -1) {
@@ -88,7 +93,7 @@ public class Classy {
 			}else
 				moduleName = pathName;			
 		} else
-			moduleName = flags.get("out");
+			moduleName = flags.get(OUTPUT);
 		
 		new Classy(moduleName, lines, flags);
 	}
@@ -137,7 +142,7 @@ public class Classy {
 		// convert all new lines into semicolons, removing excess
 		cleanTokens(tokens);
 		
-		boolean verbose = flags.containsKey("verbose");
+		boolean verbose = flags.containsKey(VERBOSE);
 		if (verbose) {
 			for(Token token: tokens)
 				System.out.println(token);
@@ -154,7 +159,7 @@ public class Classy {
 		
 		// Just creating the checker object will run the checker and
 		// try to catch any type errors that may be present.
-		boolean optimize = !flags.containsKey("Opt0");
+		boolean optimize = !flags.containsKey(NO_OPT);
 		Checker check = new Checker(program, optimize);
 		if (verbose && optimize) {
 			System.out.println("Optimized:");
