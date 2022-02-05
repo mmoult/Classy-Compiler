@@ -41,7 +41,8 @@ public class Checker {
 		for (Variable var: variables) {
 			if (var.references.isEmpty())
 				removeList.add(var);
-			else if (var.references.size() == 1) {
+			// If there is only one usage, and the variable is set (not a function param)
+			else if (var.references.size() == 1 && var.value != null && var.source.getParamList() == null) {
 				// Replace the reference with the value
 				Reference ref = var.references.get(0);
 				List<Subexpression> subList = ref.getParent().getSubexpressions();

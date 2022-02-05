@@ -22,67 +22,122 @@ import classy.compiler.translation.Translator;
 
 public class Classy {
 	public static void main(String args[]) {
-		//The first argument should be the path to the file to compile
-		if(args.length == 0)
-			System.out.println("The path should be specified as the first argument to the compiler!");
-		System.out.println("Compiling \"" + args[0] + "\"..."); // this line cannot be turned off
+		String pathName = null;
 		
 		Map<String, String> flags = new HashMap<>();
-		for(int i=1; i<args.length; i++) {
+		for(int i=0; i<args.length; i++) {
 			switch(args[i]) {
-			// No argument flags
+			case "-help":
+			case "-h":
+				printHelp();
+				return;
 			case "-O0":		// turns off optimizations
+			case "-Opt0":
+				i = addFlag("Opt0", 0, flags, args, i);
+				break;
 			case "-s":		// debug- saves intermediate files
+			case "-save":
+				i = addFlag("save", 0, flags, args, i);
+				break;
 			case "-v":		// verbose- prints out execution information
-				flags.put(args[i].substring(1), null);
+			case "-verbose":
+				i = addFlag("verbose", 0, flags, args, i);
 				break;
 			// Flags with one argument
-			case "-D":		// define. Defines some variable in the source
 			case "-o":		// names the output
-				if (i + 1 >= args.length)
-					System.err.println("Missing argument to flag: " + args[i]);
-				else {
-					flags.put(args[i].substring(1), args[i + 1]);
-					i++; // skip the next argument
-				}
+				i = addFlag("out", 1, flags, args, i);
 				break;
 			default:
-				System.err.println("Unknown flag: " + args[i]);
+				if (pathName == null)
+					pathName = args[i];
+				else
+					System.err.println("Unknown flag: " + args[i]);
 			}
 		}
 		
-		new Classy(args[0], flags);
-	}
-	
-	public Classy(String pathName, Map<String, String> flags) {
+		List<String> lines = new ArrayList<>();
 		Scanner scan = null;
-		try {
-			scan = new Scanner(new File(pathName));
-		} catch (FileNotFoundException e) {
-			throw new RuntimeException("Could not find file \"" + pathName + "\"!");
+		boolean verbose = flags.containsKey("verbose");
+		if (pathName == null) {
+			// We should get input from stdin
+			if (verbose)
+				System.out.println("Compiling from stdin...");
+			scan = new Scanner(System.in);
+		} else {
+			if (verbose)
+				System.out.println("Compiling \"" + pathName + "\"...");
+			try {
+				scan = new Scanner(new File(pathName));
+			} catch (FileNotFoundException e) {
+				throw new RuntimeException("Could not find file \"" + pathName + "\"!");
+			}
 		}
+		while(scan.hasNextLine())
+			lines.add(scan.nextLine());
+		scan.close();
+		if (lines.isEmpty())
+			throw new RuntimeException("Empty input!");
+		
 		// remove the file extension from the path name. This will be the module name
 		String moduleName;
-		if (!flags.containsKey("o")) {
-			if (pathName.indexOf('.') != -1) {
+		if (!flags.containsKey("out")) {
+			if (pathName == null)
+				moduleName = "a.out";
+			else if (pathName.indexOf('.') != -1) {
 				moduleName = pathName.substring(0, pathName.lastIndexOf('.'));
 			}else
 				moduleName = pathName;			
 		} else
-			moduleName = flags.get("o");
+			moduleName = flags.get("out");
 		
-		List<String> lines = new ArrayList<>();
+		new Classy(moduleName, lines, flags);
+	}
+	
+	private static int addFlag(String flag, int args, Map<String, String> flags, String[] cmd, int at) {
+		if (args == 0)
+			flags.put(flag, null);
+		
+		if (at + args >= cmd.length) {
+			if (at + args == cmd.length + 1)
+				System.err.println("Missing argument to flag: " + flag);
+			else
+				System.out.println((at + args - cmd.length) + " missing arguments to flag: " + flag + "!");
+			return cmd.length;
+		} else {
+			StringBuffer buf = new StringBuffer();
+			boolean first = true;
+			for (int i=1; i<=args; i++) {
+				if (first)
+					first = false;
+				else
+					buf.append(' ');
+				buf.append(cmd[at + i]);
+			}
+			flags.put(flag, buf.toString());
+			return at + args; // skips the arguments
+		}
+	}
+	
+	public static void printHelp() {
+		Scanner scan = null;
+		try {
+			scan = new Scanner(new File("flags.txt"));
+		} catch (FileNotFoundException e) {
+			System.err.println("Could not load \"flags.txt\" help file!");
+		}
 		while(scan.hasNextLine())
-			lines.add(scan.nextLine());
+			System.out.println(scan.nextLine());
 		scan.close();
-		
+	}
+	
+	public Classy(String moduleName, List<String> lines, Map<String, String> flags) {
 		Lexer lex = new Lexer(lines);
 		List<Token> tokens = lex.getTokens();
 		// strip the whitespace and comment tokens
 		// convert all new lines into semicolons, removing excess
 		cleanTokens(tokens);
 		
-		boolean verbose = flags.containsKey("v");
+		boolean verbose = flags.containsKey("verbose");
 		if (verbose) {
 			for(Token token: tokens)
 				System.out.println(token);
@@ -99,7 +154,7 @@ public class Classy {
 		
 		// Just creating the checker object will run the checker and
 		// try to catch any type errors that may be present.
-		boolean optimize = !flags.containsKey("O0");
+		boolean optimize = !flags.containsKey("Opt0");
 		Checker check = new Checker(program, optimize);
 		if (verbose && optimize) {
 			System.out.println("Optimized:");
@@ -112,8 +167,9 @@ public class Classy {
 		List<String> outLines = translate.getOutLines();
 		// Output the lines to fileName.ll
 		FileWriter fw = null;
+		File ll = new File(moduleName + ".ll");
 		try {
-			fw = new FileWriter(new File(moduleName + ".ll"));
+			fw = new FileWriter(ll);
 			
 			for (String line: outLines)
 				fw.write(line + "\n");
@@ -132,9 +188,32 @@ public class Classy {
 		if (fw != null) {
 			// Now we are going to want to compile to an executable.
 			// We use llc first, then gcc.
-			runProcess(List.of("llc", moduleName+".ll", "-o", moduleName+".s"), "Static compiling", verbose);
-			runProcess(List.of("gcc", moduleName+".s", "-o", moduleName+".exe"), "Linking", verbose);
+			//runProcess(List.of("llc", moduleName+".ll", "-o", moduleName+".s"), "Static compiling", verbose);
+			//runProcess(List.of("gcc", moduleName+".s", "-o", moduleName), "Linking", verbose);
+			
+			// Or we can condense into one piped step
+			ProcessBuilder llc = new ProcessBuilder("llc", moduleName+".ll",  "-filetype=asm",  "-o", "-");
+	    	ProcessBuilder gcc = new ProcessBuilder("gcc", "-x", "assembler", "-", "-o", moduleName);
+	    	String[] commands = {"Static compilation", "Assembly and Linking"};
+	    	try {
+	    		List<Process> whole = ProcessBuilder.startPipeline(List.of(llc, gcc));
+	    		for (int i=0; i<whole.size(); i++) {
+	    			Process p = whole.get(i);
+	    			if (verbose)
+	    				System.out.println("Running: " + commands[i]);
+	    			int exitCode = p.waitFor();   
+	    			if (exitCode != 0)
+	    				throw new RuntimeException(commands[i] + " failed, error code: " + exitCode);
+	    		}
+	    	}catch (Exception e) {
+	    		e.printStackTrace();
+	    	}
 		}
+		
+		boolean saveDebug = flags.containsKey("save");
+		// If saveDebug is not on, then we want to delete the .ll file
+		if (!saveDebug) 
+			ll.delete();
 	}
 	
 	protected void runProcess(List<String> cmd, String pName, boolean verbose) {
@@ -159,6 +238,8 @@ public class Classy {
 				output.append('\n');
 				output.append(line);
 			}
+			if (verbose)
+				System.out.println(output.toString());
 
 			int exitCode = process.waitFor();
 			if (exitCode != 0)

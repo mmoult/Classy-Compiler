@@ -1,0 +1,5 @@
+-h[elp]			print a list of all flags
+-o[ut] X		names the output binary "X"
+-O[pt]0				turns off optimizations to LLVM IR
+-v[erbose]		prints run information
+-s[ave]			retains the LLVM IR file after compilation
