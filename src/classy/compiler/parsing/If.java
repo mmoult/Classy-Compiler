@@ -31,12 +31,12 @@ public class If extends Subexpression {
 		// must have an explicit bound, or we can see no else and an implicit block
 		if (it.match(Token.Type.ELSE, end)) {
 			it.next(end);
+			else_ = new Value();
+			else_.parse(it, end);
+		} else {
 			Block implicit = new Block(null, true);
 			implicit.parse(it, end);
 			else_ = new Value(null, implicit);
-		} else {
-			else_ = new Value();
-			else_.parse(it, end);
 		}
 	}
 	
@@ -58,9 +58,15 @@ public class If extends Subexpression {
 		buf.append(getIndents(indents + 1));
 		buf.append(then.pretty(indents + 1));
 		buf.append("\n");
-		buf.append(getIndents(indents + 1));
+		buf.append(getIndents(indents));
 		buf.append("else ");
-		buf.append(else_.pretty(indents + 1));
+		int nIndents = indents;
+		if (!(else_.getSubexpressions().get(0) instanceof Block)) {
+			buf.append("\n");
+			nIndents = indents + 1;
+			buf.append(getIndents(nIndents));
+		}
+		buf.append(else_.pretty(nIndents));
 		return buf.toString();
 	}
 

@@ -22,7 +22,6 @@ import classy.compiler.parsing.Operation;
 import classy.compiler.parsing.Reference;
 import classy.compiler.parsing.Subexpression;
 import classy.compiler.parsing.Value;
-import classy.compiler.parsing.Void;
 
 public class Translator {
 	private int varNum = 1;
@@ -204,9 +203,7 @@ public class Translator {
 				if (argument.getSubexpressions().get(0) instanceof ArgumentList) {
 					ArgumentList ls = (ArgumentList)argument.getSubexpressions().get(0);
 					args = ls.getArgs().toArray(new Value[] {});
-				}else if (argument.getSubexpressions().get(0) instanceof Void)
-					args = new Value[] {};
-				else
+				}else
 					args = new Value[] {argument};
 				
 				int[] argsAt = new int[args.length];
@@ -330,7 +327,7 @@ public class Translator {
 				// Lastly, go to the continuation label
 				lines.addLine("br label %sc", cmp+"");
 				// Finally, put the continuation label
-				lines.addLabel("%sc" + cmp);
+				lines.addLabel("sc" + cmp);
 				return; // We don't want to go to regular processing after
 			}
 			

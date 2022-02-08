@@ -90,7 +90,7 @@ public class Assignment extends Expression {
 			buf.append(')');
 		}
 		buf.append(" = ");
-		buf.append(value.pretty(indents + 1));
+		buf.append(value.pretty(indents));
 		return buf.toString();
 	}
 	

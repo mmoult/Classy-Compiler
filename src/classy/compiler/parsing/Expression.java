@@ -28,7 +28,7 @@ public abstract class Expression {
 	
 	protected String getIndents(int indents) {
 		StringBuffer buf = new StringBuffer();
-		String indentStr = " ";
+		String indentStr = "  ";
 		for (int i=0; i<indents; i++)
 			buf.append(indentStr);
 		return buf.toString();

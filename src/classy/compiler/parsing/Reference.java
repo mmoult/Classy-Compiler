@@ -51,8 +51,11 @@ public class Reference extends Subexpression {
 	public String pretty(int indents) {
 		if (arguments == null)
 			return varName;
-		else
-			return varName + arguments.pretty(indents);
+		else {
+			if (arguments.getSubexpressions().get(0) instanceof ArgumentList)
+				return varName + arguments.pretty(indents);
+			return varName + "(" + arguments.pretty(indents) + ")";
+		}
 	}
 
 }

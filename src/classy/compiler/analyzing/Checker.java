@@ -17,7 +17,6 @@ import classy.compiler.parsing.Operation;
 import classy.compiler.parsing.Reference;
 import classy.compiler.parsing.Subexpression;
 import classy.compiler.parsing.Value;
-import classy.compiler.parsing.Void;
 
 public class Checker {
 	protected List<Variable> variables = new ArrayList<>();
@@ -166,7 +165,7 @@ public class Checker {
 				Subexpression argLs = subexp.remove(refAt + 1);
 				
 				// We want to type check on the number of arguments the function needs
-				if (source.getParamList().size() > 1) {
+				if (source.getParamList().size() != 1) {
 					// If there is more than 1 parameter, then we need an argument list
 					if (argLs instanceof ArgumentList) {
 						ArgumentList list = (ArgumentList)argLs;
@@ -176,15 +175,10 @@ public class Checker {
 							throw new CheckException("Mismatch number of arguments given for function ",
 									ref.getVarName(), "! ", Integer.toString(found),
 									" arguments found whereas ", Integer.toString(expected), " expected.");
-					}else if (source.getParamList().size() != 1)
+					}else
 						throw new CheckException("Mismatch number of arguments given for function ",
 								ref.getVarName(), "! 1 argument found whereas ",
 								Integer.toString(source.getParamList().size()), " expected.");
-				}else if (source.getParamList().isEmpty()) {
-					// We need a void token
-					if (!(argLs instanceof Void))
-						throw new CheckException("Unexpected argument for void function! ", argLs,
-								" found, whereas \"void\" keyword expected!");
 				}
 				
 				// Wrap the subexpression in a value
@@ -273,6 +267,9 @@ public class Checker {
 						result = left != 0? 1: (right != 0? 1: 0);
 					else
 						throw new CheckException("Unoptimized Operation Type! ", op);
+				}else {
+					// Could not optimize since one side was not literal or something
+					return;
 				}
 			} else if (op instanceof Operation.Negation)
 				result = -right;

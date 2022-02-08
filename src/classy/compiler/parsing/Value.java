@@ -87,11 +87,7 @@ public class Value extends Subexpression {
 				if (!endReady)
 					endReady = true;
 				
-				if (found instanceof Block) {
-					// If in the end, the block only had one expression, it should be
-					// replaced with that expression, rather than using a block
-					((Block)found).reduce();
-				}else if (found instanceof Operation || found instanceof Reference)
+				if (found instanceof Operation || found instanceof Reference)
 					endReady = false;
 			}
 		}
@@ -186,7 +182,7 @@ public class Value extends Subexpression {
 		case GREATER_EQUAL:
 			return new BinOp.GreaterEqual(this);
 		case VOID:
-			return new Void(this);
+			return new ArgumentList(this);
 		case AMPERSAND:
 			return new BinOp.And(this);
 		case BAR:

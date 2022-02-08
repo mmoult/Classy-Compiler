@@ -27,6 +27,10 @@ public class ArgumentList extends Subexpression {
 
 	@Override
 	public void parse(TokenIterator it, int end) {
+		if (it.match(Token.Type.VOID, end)) {
+			it.next(end);
+			return;
+		}
 		// I think that this is where we need to look for more arguments
 		// Comma is not an operator the same way as + or -. It is outside
 		// precedence, since in a way, it is ordered absolutely last
@@ -61,7 +65,7 @@ public class ArgumentList extends Subexpression {
 				first = false;
 			else
 				buf.append(", ");
-			buf.append(arg.pretty(indents + 1));
+			buf.append(arg.pretty(indents));
 		}
 		buf.append(")");
 		
