@@ -17,6 +17,7 @@ import classy.compiler.parsing.Operation;
 import classy.compiler.parsing.Reference;
 import classy.compiler.parsing.Subexpression;
 import classy.compiler.parsing.Value;
+import classy.compiler.parsing.Void;
 
 public class Checker {
 	protected List<Variable> variables = new ArrayList<>();
@@ -82,6 +83,8 @@ public class Checker {
 			check((Operation)e, env, optimize);
 		if (e instanceof Value)
 			check((Value)e, env, optimize);
+		if (e instanceof ArgumentList)
+			check((ArgumentList)e, env, optimize);
 		
 		// Optimizations begin after checking
 		if (optimize) {
@@ -177,10 +180,17 @@ public class Checker {
 						throw new CheckException("Mismatch number of arguments given for function ",
 								ref.getVarName(), "! 1 argument found whereas ",
 								Integer.toString(source.getParamList().size()), " expected.");
+				}else if (source.getParamList().isEmpty()) {
+					// We need a void token
+					if (!(argLs instanceof Void))
+						throw new CheckException("Unexpected argument for void function! ", argLs,
+								" found, whereas \"void\" keyword expected!");
 				}
 				
 				// Wrap the subexpression in a value
 				Value args = new Value(null, argLs);
+				// We need to check any and all arguments
+				check(args, env, optimize);
 				ref.setArgument(args);
 			}
 		}

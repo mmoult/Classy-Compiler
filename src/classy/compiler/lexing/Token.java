@@ -47,7 +47,7 @@ public class Token {
 		ASSIGN,
 		IF,
 		ELSE,
-		LAMBDA,
+		LAMBDA
 	}
 	
 	public String getValue() {

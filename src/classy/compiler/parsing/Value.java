@@ -49,15 +49,7 @@ public class Value extends Subexpression {
 					throw new ParseException("Unexpected token ", it.token(),
 							" in value! Close paranthesis ')' expected instead.");
 				
-				// Similarly to how we reduce blocks, if there is only one element in the value,
-				// we can collapse the value and add it directly
-				// We do this regardless of whether optimize is specified, since there is no use
-				//  to having redundant and excessive parentheses. 
-				if (val.subexpressions.size() == 1) 
-					found = val.subexpressions.get(0);
-				else
-					found = val;
-				
+				found = val;
 				it.next(end); // to get past the close
 			}else if (it.match(Token.Type.COMMA, end)) {
 				// We have an argument list here!
@@ -136,6 +128,24 @@ public class Value extends Subexpression {
 				}
 			}while(tryAgain);
 		}
+		
+		// Similarly to how we reduce blocks, if there is only one element in the value,
+		// we can collapse the values if they only have one subexpression.
+		// We do this regardless of whether optimize is specified, since there is no use
+		//  to having excessive parentheses. 
+		for (int i = 0; i < subexpressions.size(); i++) {
+			Subexpression sub = subexpressions.get(i);
+			if (sub instanceof Value) {
+				Value value = (Value)sub;
+				if (value.getSubexpressions().size() == 1) {
+					// replace value in the list with its expression
+					subexpressions.remove(i);
+					Subexpression inner = value.getSubexpressions().get(0);
+					inner.parent = this;
+					subexpressions.add(i, inner);
+				}
+			}
+		}
 	}
 	
 	protected Subexpression typify(TokenIterator it, int end) {
@@ -173,6 +183,8 @@ public class Value extends Subexpression {
 			return new BinOp.GreaterThan(this);
 		if (it.match(Token.Type.GREATER_EQUAL, end))
 			return new BinOp.GreaterEqual(this);
+		if (it.match(Token.Type.VOID, end))
+			return new Void(this);
 		
 		throw new ParseException("Expression beginning with ", it.token(), " could not be typified!");
 	}
