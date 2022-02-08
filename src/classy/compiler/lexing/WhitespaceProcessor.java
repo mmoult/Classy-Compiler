@@ -15,7 +15,10 @@ public class WhitespaceProcessor extends Processor {
 		int i=0;
 		for (; i<check.length(); i++) {
 			char c = check.charAt(i);
-			if (c == '\n' || !Character.isWhitespace(c))
+			if (c == '\\' && check.length() > i + 1 && check.charAt(i+1) == '\n') {
+				i++;
+				continue;
+			}else if (c == '\n' || !Character.isWhitespace(c))
 				break;
 		}
 		soFar += check.substring(0, i);

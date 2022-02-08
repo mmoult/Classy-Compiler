@@ -212,6 +212,37 @@ public abstract class BinOp extends Operation {
 		}
 	}
 	
+	public static class And extends BinOp {
+		public And(Value parent) {
+			super(parent, Token.Type.AMPERSAND);
+		}
+		
+		@Override
+		public Float getPrecedence() {
+			return 3f;
+		}
+
+		@Override
+		protected String prettyOperation() {
+			return "&";
+		}
+	}
+	public static class Or extends BinOp {
+		public Or(Value parent) {
+			super(parent, Token.Type.BAR);
+		}
+		
+		@Override
+		public Float getPrecedence() {
+			return 3f;
+		}
+
+		@Override
+		protected String prettyOperation() {
+			return "|";
+		}
+	}
+	
 	@Override
 	public String pretty(int indents) {
 		StringBuffer buf = new StringBuffer("(");

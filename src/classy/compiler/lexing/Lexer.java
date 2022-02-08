@@ -13,6 +13,9 @@ public class Lexer {
 	protected void lex(List<String> lines) {
 		Processor selected = null;
 		Processor[] available = getAllProcessors();
+		// We can keep track of level (as determined by parentheses) If level > 0, then
+		//  we know not to add a newline if we come to the end of a line (since it is mid-expression)
+		int level = 0;
 		
 		for(int i=0; i<lines.size(); i++) {
 			int lineNo = i + 1;
@@ -59,14 +62,23 @@ public class Lexer {
 				
 				// If there is still more data to process, then extract what we got
 				if (line.length() > 0) {
-					tokens.add(new Token(selected.getValue(), selected.getType(), lineNo, colNo));
+					Token got = new Token(selected.getValue(), selected.getType(), lineNo, colNo);
+					if (got.getType() == Token.Type.OPEN_PAREN)
+						level++;
+					else if (got.getType() == Token.Type.CLOSE_PAREN) {
+						level--;
+						if (level < 0)
+							throw new LexException("Mismatch parentheses error! Cannot see ",
+									got, " before matching opening.");
+					}
+					tokens.add(got);
 					selected.clear();
 					selected = null;
 				} // else- If the processor ate all the characters, then it needs more
 			}
 			
 			// If the line is only \n, then we should add a corresponding new line token
-			if (line.equals("\n"))
+			if (line.equals("\n") && level == 0)
 				tokens.add(new Token("\\n", Token.Type.NEW_LINE, lineNo, colNo));
 		}
 		if (selected != null) {

@@ -149,44 +149,51 @@ public class Value extends Subexpression {
 	}
 	
 	protected Subexpression typify(TokenIterator it, int end) {
-		if (it.match(Token.Type.NUMBER, end))
+		it.match(Token.Type.PERIOD, end);
+		switch(it.token().getType()) {
+		case NUMBER:
 			return new Literal(this);
-		if (it.match(Token.Type.OPEN_BRACE, end))
+		case OPEN_BRACE:
 			return new Block(this, false);
-		if (it.match(Token.Type.IF, end))
+		case IF:
 			return new If(this);
-		if (it.match(Token.Type.IDENTIFIER, end))
+		case IDENTIFIER:
 			return new Reference(this);
-		if (it.match(Token.Type.PLUS, end))
+		case PLUS:
 			return new BinOp.Addition(this);
-		if (it.match(Token.Type.MINUS, end)) {
+		case MINUS:
 			if (this.subexpressions.size() == 0)
 				return new Operation.Negation(this);
-			return new BinOp.Subtraction(this);			
-		}if (it.match(Token.Type.STAR, end))
+			return new BinOp.Subtraction(this);
+		case STAR:
 			return new BinOp.Multiplication(this);
-		if (it.match(Token.Type.SLASH, end))
+		case SLASH:
 			return new BinOp.Division(this);
-		if (it.match(Token.Type.BANG, end))
+		case BANG:
 			return new Operation.Not(this);
-		if (it.match(Token.Type.PERCENT, end))
+		case PERCENT:
 			return new BinOp.Modulus(this);
-		if (it.match(Token.Type.EQUAL, end))
+		case EQUAL:
 			return new BinOp.Equal(this);
-		if (it.match(Token.Type.NEQUAL, end))
+		case NEQUAL:
 			return new BinOp.NEqual(this);
-		if (it.match(Token.Type.LESS_THAN, end))
+		case LESS_THAN:
 			return new BinOp.LessThan(this);
-		if (it.match(Token.Type.LESS_EQUAL, end))
+		case LESS_EQUAL:
 			return new BinOp.LessEqual(this);
-		if (it.match(Token.Type.GREATER_THAN, end))
+		case GREATER_THAN:
 			return new BinOp.GreaterThan(this);
-		if (it.match(Token.Type.GREATER_EQUAL, end))
+		case GREATER_EQUAL:
 			return new BinOp.GreaterEqual(this);
-		if (it.match(Token.Type.VOID, end))
+		case VOID:
 			return new Void(this);
-		
-		throw new ParseException("Expression beginning with ", it.token(), " could not be typified!");
+		case AMPERSAND:
+			return new BinOp.And(this);
+		case BAR:
+			return new BinOp.Or(this);
+		default:
+			throw new ParseException("Expression beginning with ", it.token(), " could not be typified!");
+		}		
 	}
 	
 	public List<Subexpression> getSubexpressions() {

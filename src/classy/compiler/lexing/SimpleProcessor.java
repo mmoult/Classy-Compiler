@@ -53,6 +53,12 @@ public class SimpleProcessor extends Processor {
 			found = Token.Type.SLASH;
 		else if (c == '!')
 			found = Token.Type.BANG;
+		else if (c == '%')
+			found = Token.Type.PERCENT;
+		else if (c == '&')
+			found = Token.Type.AMPERSAND;
+		else if (c == '|')
+			found = Token.Type.BAR;
 		else if (c == '>') {
 			i++;
 			char after = charAt(check, i);

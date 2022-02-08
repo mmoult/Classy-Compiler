@@ -35,6 +35,7 @@ public class Token {
 		STAR,
 		PERCENT,
 		SLASH,
+		// logical operations
 		NEQUAL,
 		EQUAL,
 		LESS_THAN,
@@ -42,6 +43,8 @@ public class Token {
 		GREATER_THAN,
 		GREATER_EQUAL,
 		BANG,
+		AMPERSAND,
+		BAR,
 		// constructs
 		LET,
 		ASSIGN,

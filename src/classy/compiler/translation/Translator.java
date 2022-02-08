@@ -239,6 +239,101 @@ public class Translator {
 			}
 			
 		}else if (e instanceof Operation) {
+			// We need to handle 'or' and 'and' first, since they could short circuit
+			if (e instanceof BinOp.And || e instanceof BinOp.Or) {
+				BinOp bop = (BinOp)e;
+				boolean bothNeeded = e instanceof BinOp.And;
+				// We evaluate the left first, and then we could short circuit and dodge the second
+				String lhs;
+				List<Subexpression> opLhs = bop.getLHS().getSubexpressions();
+				if (opLhs.size() == 1 && opLhs.get(0) instanceof Literal) {
+					// We can optimize if it is an int literal by a direct output
+					lhs = ((Literal)opLhs.get(0)).getToken().getValue();
+					// We want to find the truth of the literal
+					boolean firstTrue = Integer.parseInt(lhs) != 0;
+					if (!bothNeeded && firstTrue) {
+						store("1", retAt);
+						return; // we can quit early, since the operation has been decided
+					}else if (bothNeeded && !firstTrue) {
+						store("0", retAt);
+						return; 
+					}
+				}else {
+					int la = allocate();
+					translate(bop.getLHS(), la+"");
+					int ll = load(la+"");
+					lhs = "%" + ll;
+				}
+				
+				// If we got here, then we cannot know the result of this expression until
+				// runtime. That means that we need a branching mechanism
+				int cmp = varNum++;
+				lines.addLine("%", Integer.toString(cmp), " = icmp ne i32 ", lhs, ", ", 0+"");
+				//br i1 %6, label %7, label %8
+				int truth = varNum++;
+				int falsity = varNum++;
+				lines.addLine("br i1 %", cmp+"", ", label %", truth+"", ", label %", falsity+"");
+				lines.addLabel(truth+"");
+				if (bothNeeded) {
+					// We must verify that rhs is also true
+					List<Subexpression> opRhs = bop.getLHS().getSubexpressions();
+					if (opRhs.size() == 1 && opRhs.get(0) instanceof Literal) {
+						// We can optimize if it is an int literal by a direct output
+						String rhs = ((Literal)opRhs.get(0)).getToken().getValue();
+						// We want to find the truth of the literal
+						boolean secondTrue = Integer.parseInt(rhs) != 0;
+						if (secondTrue)
+							store("1", retAt);
+					}else {
+						int ra = allocate();
+						translate(bop.getRHS(), ra+"");
+						int rr = load(ra+"");
+						String rhs = "%" + rr;
+						// If rhs != 0, then the whole expression is true
+						int res = varNum++;
+						lines.addLine("%", Integer.toString(res), " = icmp ne i32 ", rhs, ", ", 0+"");
+						int expand = varNum++;
+						lines.addLine("%", Integer.toString(expand), " = zext i1 %", Integer.toString(res), " to i32");
+						store("%"+expand, retAt);
+					}
+				}else 
+					// We know the whole expression is true since we don't need both
+					store("1", retAt);
+				// Lastly, go to the continuation label
+				lines.addLine("br label %sc", cmp+"");
+				lines.addLabel(falsity+"");
+				if (bothNeeded)
+					// We already had one failure, so the whole expression is false
+					store("0", retAt);
+				else {
+					List<Subexpression> opRhs = bop.getLHS().getSubexpressions();
+					if (opRhs.size() == 1 && opRhs.get(0) instanceof Literal) {
+						// We can optimize if it is an int literal by a direct output
+						String rhs = ((Literal)opRhs.get(0)).getToken().getValue();
+						// We want to find the truth of the literal
+						boolean secondTrue = Integer.parseInt(rhs) != 0;
+						if (secondTrue)
+							store("1", retAt);
+					}else {
+						int ra = allocate();
+						translate(bop.getRHS(), ra+"");
+						int rr = load(ra+"");
+						String rhs = "%" + rr;
+						// If rhs != 0, then the whole expression is true
+						int res = varNum++;
+						lines.addLine("%", Integer.toString(res), " = icmp ne i32 ", rhs, ", ", 0+"");
+						int expand = varNum++;
+						lines.addLine("%", Integer.toString(expand), " = zext i1 %", Integer.toString(res), " to i32");
+						store("%"+expand, retAt);
+					}
+				}
+				// Lastly, go to the continuation label
+				lines.addLine("br label %sc", cmp+"");
+				// Finally, put the continuation label
+				lines.addLabel("%sc" + cmp);
+				return; // We don't want to go to regular processing after
+			}
+			
 			Operation op = (Operation)e;
 			String rhs;
 			List<Subexpression> opRhs = op.getRHS().getSubexpressions();

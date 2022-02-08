@@ -267,6 +267,10 @@ public class Checker {
 						result = (left > right? 1: 0);
 					else if (op instanceof BinOp.GreaterEqual)
 						result = (left >= right? 1: 0);
+					else if (op instanceof BinOp.And)
+						result = left != 0? (right != 0? 1: 0): 0;
+					else if (op instanceof BinOp.Or)
+						result = left != 0? 1: (right != 0? 1: 0);
 					else
 						throw new CheckException("Unoptimized Operation Type! ", op);
 				}
