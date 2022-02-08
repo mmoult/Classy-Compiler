@@ -245,13 +245,20 @@ public abstract class BinOp extends Operation {
 	
 	@Override
 	public String pretty(int indents) {
-		StringBuffer buf = new StringBuffer("(");
-		buf.append(lhs.pretty(indents));
-		buf.append(' ');
+		StringBuffer buf = new StringBuffer();
+		if (!isLink())
+			buf.append("(");
+		if (lhs != null) {			
+			buf.append(lhs.pretty(indents));
+			buf.append(' ');
+		}
 		buf.append(prettyOperation());
-		buf.append(' ');
-		buf.append(rhs.pretty(indents));
-		buf.append(')');
+		if (rhs != null) {			
+			buf.append(' ');
+			buf.append(rhs.pretty(indents));
+		}
+		if (!isLink())
+			buf.append(')');
 		return buf.toString();
 	}
 	

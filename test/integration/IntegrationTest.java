@@ -107,6 +107,23 @@ class IntegrationTest {
 		expectFromProgram(lines, 7);
 	}
 	
+	@Test
+	void testFxPrecedence() {
+		List<String> lines = List.of(
+			"let sum3or5(max) = {",
+			"	if max < 3",
+			"		0",
+			"	sum3or5(max - 1) + \\",
+			"	if !(max % 3) | !(max % 5)",
+			"		max",
+			"	else",
+			"		0",
+			"}",
+			"sum3or5 10"
+		);
+		expectFromProgram(lines, 33);
+	}
+	
 	protected ProcessResult runProcess(List<String> cmd) {
 		ProcessBuilder processBuilder = new ProcessBuilder(cmd);
 		processBuilder.redirectErrorStream(true);

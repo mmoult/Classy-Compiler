@@ -2,7 +2,6 @@ package classy.compiler.parsing;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.TreeSet;
 
 import classy.compiler.lexing.Token;
 
@@ -89,57 +88,6 @@ public class Value extends Subexpression {
 				
 				if (found instanceof Operation || found instanceof Reference)
 					endReady = false;
-			}
-		}
-		
-		if (subexpressions.size() == 1)
-			return; // If there was only one element, chaining is unneeded.
-		
-		// Lastly, we want to do a run through the subexpressions for chaining expressions
-		//  to find their arguments.
-		// We could not do this during parsing because of order of operations:
-		//  eg "2 + 4 / 1" -> "2 + (4 / 1)", even though the plus is seen first.
-		TreeSet<Float> precs = new TreeSet<>();
-		for (int i = 0; i < subexpressions.size(); i++) {
-			Float prec = subexpressions.get(i).getPrecedence();
-			if (prec != null)
-				precs.add(prec);
-		}
-		for (Float prec: precs) {
-			boolean tryAgain;
-			do {
-				tryAgain = false;
-				for (int i = 0; i < subexpressions.size(); i++) {
-					Subexpression sub = subexpressions.get(i);
-					if (!sub.isLink())
-						continue;
-					Float subPrec = sub.getPrecedence();
-					if (subPrec == null)
-						continue;
-					if (sub.getPrecedence().equals(prec)) {
-						sub.evaluateChain(i, subexpressions);
-						tryAgain = true;
-						break; // restart this precedence after the list has been modified
-					}
-				}
-			}while(tryAgain);
-		}
-		
-		// Similarly to how we reduce blocks, if there is only one element in the value,
-		// we can collapse the values if they only have one subexpression.
-		// We do this regardless of whether optimize is specified, since there is no use
-		//  to having excessive parentheses. 
-		for (int i = 0; i < subexpressions.size(); i++) {
-			Subexpression sub = subexpressions.get(i);
-			if (sub instanceof Value) {
-				Value value = (Value)sub;
-				if (value.getSubexpressions().size() == 1) {
-					// replace value in the list with its expression
-					subexpressions.remove(i);
-					Subexpression inner = value.getSubexpressions().get(0);
-					inner.parent = this;
-					subexpressions.add(i, inner);
-				}
 			}
 		}
 	}

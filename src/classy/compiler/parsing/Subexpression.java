@@ -39,5 +39,8 @@ public abstract class Subexpression extends Expression {
 	public Value getParent() {
 		return parent;
 	}
+	public void setParent(Value parent) {
+		this.parent = parent;
+	}
 	
 }

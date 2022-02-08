@@ -83,11 +83,16 @@ public abstract class Operation extends Subexpression {
 	
 	@Override
 	public String pretty(int indents) {
-		StringBuffer buf = new StringBuffer("(");
+		StringBuffer buf = new StringBuffer();
+		if (!isLink())
+			buf.append("(");
 		buf.append(prettyOperation());
-		buf.append(' ');
-		buf.append(rhs.pretty(indents + 1));
-		buf.append(')');
+		if (rhs != null) {
+			buf.append(' ');
+			buf.append(rhs.pretty(indents + 1));			
+		}
+		if (!isLink())
+			buf.append(')');
 		return buf.toString();
 	}
 	
