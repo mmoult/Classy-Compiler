@@ -80,6 +80,7 @@ public class Optimizer {
 		// We had to check after the children were checked since they could have been in blocks
 		//  that would now be reduced.
 		Value rhs = op.getRHS();
+		optimize(rhs);
 		if (rhs.getSubexpressions().size() == 1 && rhs.getSubexpressions().get(0) instanceof Literal) {
 			int right = Integer.parseInt(((Literal)rhs.getSubexpressions().get(0)).getToken().getValue());
 			int result = 0;
@@ -87,6 +88,7 @@ public class Optimizer {
 			if (op instanceof BinOp) {
 				BinOp bop = (BinOp)op;
 				Value lhs = bop.getLHS();
+				optimize(lhs);
 				if (lhs.getSubexpressions().size() == 1 &&
 						lhs.getSubexpressions().get(0) instanceof Literal) {
 					int left = Integer.parseInt(((Literal)lhs.getSubexpressions().get(0)).getToken().getValue());
@@ -150,13 +152,16 @@ public class Optimizer {
 	}
 	
 	protected void optimize(Value val) {
-		// Similarly to how we reduce blocks, if there is only one element in the value,
-		// we can collapse the values if they only have one subexpression.
 		List<Subexpression> sub = val.getSubexpressions();
 		for (int i = 0; i < sub.size(); i++) {
-			Subexpression exp = sub.get(i);
-			if (exp instanceof Value) {
-				Value value = (Value)exp;
+			// optimizing this element may transform it into something
+			// different. Thus we do not want to save a temporary here.
+			optimize(sub.get(i));
+			
+			// Similarly to how we reduce blocks, if there is only one element in the value,
+			//  we can collapse it into this.
+			if (sub.get(i) instanceof Value) {
+				Value value = (Value)sub.get(i);
 				if (value.getSubexpressions().size() == 1) {
 					// replace value in the list with its expression
 					sub.remove(i);
