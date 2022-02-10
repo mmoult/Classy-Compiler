@@ -196,6 +196,10 @@ public class Optimizer {
 				parList.add(ifAt, replaceWith);
 				replaceWith.setParent(if_.getParent());
 			}
+		}else {
+			// optimize all result branches
+			optimize(if_.getThen());
+			optimize(if_.getElse());
 		}
 	}
 	

@@ -8,7 +8,7 @@ import classy.compiler.lexing.Token;
 public class Assignment extends Expression {
 	protected Block parent;
 	protected String varName;
-	protected List<String> paramList = null;
+	protected List<Parameter> paramList = null;
 	protected Value value;
 	
 	public Assignment(Block parent) {
@@ -44,12 +44,14 @@ public class Assignment extends Expression {
 				throw new ParseException("Missing close paren to parameter list beginning with ",
 						it.tokens.get(start), "!");
 			while(true) {
-				if (it.match(Token.Type.IDENTIFIER, close + 1)) {
-					String pName = it.token().getValue();
-					paramList.add(pName);
-					it.next(close);
+				int nextComma = it.find(Token.Type.COMMA, close);
+				int stop = (nextComma != -1? nextComma: close) + 1;
+				if (it.match(Token.Type.IDENTIFIER, stop)) {
+					Parameter param = new Parameter();
+					param.parse(it, end);
+					this.paramList.add(param);
 					// After the identifier, we must see either the end or a comma
-					if (it.match(Token.Type.COMMA, close + 1)) {
+					if (it.match(Token.Type.COMMA, stop)) {
 						it.next(close);
 						// We are ready to parse another. We don't need to see another though,
 						//  comma ended lists are acceptable.
@@ -80,17 +82,17 @@ public class Assignment extends Expression {
 		if (paramList != null) {
 			buf.append('(');
 			boolean first = true;
-			for (String param: paramList) {
+			for (Parameter param: paramList) {
 				if (first)
 					first = false;
 				else
 					buf.append(", ");
-				buf.append(param);
+				buf.append(param.pretty(indents));
 			}
 			buf.append(')');
 		}
 		buf.append(" = ");
-		buf.append(value.pretty(indents));
+		buf.append(value.pretty(indents+1));
 		return buf.toString();
 	}
 	
@@ -106,7 +108,7 @@ public class Assignment extends Expression {
 		return parent;
 	}
 	
-	public List<String> getParamList() {
+	public List<Parameter> getParamList() {
 		return paramList;
 	}
 

@@ -124,6 +124,29 @@ class IntegrationTest {
 		expectFromProgram(lines, 33);
 	}
 	
+	@Test
+	void testRecursiveFx() {
+		List<String> lines = List.of(
+			"let factorial(num) = {",
+			"	if num <= 0",
+			"		1",
+			"	num * factorial(num - 1)",
+			"}",
+			"factorial 4"
+		);
+		expectFromProgram(lines, 24);
+	}
+	
+	@Test
+	void testFunctionalExternality() {
+		List<String> lines = List.of(
+			"let global = 1",
+			"let foo() = global",
+			"foo void"
+		);
+		expectFromProgram(lines, 1);
+	}
+	
 	protected ProcessResult runProcess(List<String> cmd) {
 		ProcessBuilder processBuilder = new ProcessBuilder(cmd);
 		processBuilder.redirectErrorStream(true);

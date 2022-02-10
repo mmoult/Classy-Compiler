@@ -19,6 +19,7 @@ import classy.compiler.parsing.Expression;
 import classy.compiler.parsing.If;
 import classy.compiler.parsing.Literal;
 import classy.compiler.parsing.Operation;
+import classy.compiler.parsing.Parameter;
 import classy.compiler.parsing.Reference;
 import classy.compiler.parsing.Subexpression;
 import classy.compiler.parsing.Value;
@@ -39,18 +40,18 @@ public class Translator {
 		Set<String> namesUsed = new HashSet<>();
 		
 		for (Variable var: vars) {
-			String name = var.getName();
-			String useName = name;
-			if (namesUsed.contains(name)) {
-				// There was a collision, so we try another
-				int cnt = 0;
-				while (namesUsed.contains(name + cnt)) {
-					cnt++;
-				}
-				useName = name + cnt;
-			}
-			// Great! we found a name we can use.
 			if (var.getSource() != null) {
+				String name = var.getName();
+				String useName = name;
+				if (namesUsed.contains(name)) {
+					// There was a collision, so we try another
+					int cnt = 0;
+					while (namesUsed.contains(name + cnt)) {
+						cnt++;
+					}
+					useName = name + cnt;
+				}
+				// Great! we found a name we can use.
 				namesUsed.add(useName);
 				varMangle.put(var.getSource(), useName);
 			}
@@ -93,9 +94,7 @@ public class Translator {
 	
 	protected void translate(Expression e, String retAt) {
 		if (e instanceof Value) {
-			Value val = (Value)e;
-			for (Expression se : val.getSubexpressions())
-				translate(se, retAt);
+			translate(((Value)e).getSubexpressions().get(0), retAt);
 		}else if (e instanceof Block) {
 			Block block = (Block)e;
 			for (Expression be : block.getBody())
@@ -153,7 +152,8 @@ public class Translator {
 				lineCmps[1] = name;
 				lineCmps[2] = "(";
 				int i = 3;
-				for (String param: asgn.getParamList()) {
+				for (Parameter parameter: asgn.getParamList()) {
+					String param = parameter.getName();
 					if (i > 3)
 						lineCmps[i++] = ", i32 %";
 					else
