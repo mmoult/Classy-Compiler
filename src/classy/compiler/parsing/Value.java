@@ -48,7 +48,12 @@ public class Value extends Subexpression {
 					throw new ParseException("Unexpected token ", it.token(),
 							" in value! Close paranthesis ')' expected instead.");
 				
-				found = val;
+				// Argument lists subsume their whole value. If we have encountered one,
+				//  extract it immediately instead of wrapping in a value
+				if (val.subexpressions.size() == 1 && val.subexpressions.get(0) instanceof ArgumentList)
+					found = val.subexpressions.get(0);
+				else
+					found = val;
 				it.next(end); // to get past the close
 			}else if (it.match(Token.Type.COMMA, end)) {
 				// We have an argument list here!

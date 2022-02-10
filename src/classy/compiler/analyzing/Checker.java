@@ -14,6 +14,7 @@ import classy.compiler.parsing.BinOp;
 import classy.compiler.parsing.Block;
 import classy.compiler.parsing.Expression;
 import classy.compiler.parsing.If;
+import classy.compiler.parsing.Literal;
 import classy.compiler.parsing.Operation;
 import classy.compiler.parsing.Parameter;
 import classy.compiler.parsing.Reference;
@@ -47,18 +48,21 @@ public class Checker {
 		// dispatch on the appropriate checking function
 		if (e instanceof Assignment)
 			check((Assignment)e, env);
-		if (e instanceof Block)
+		else if (e instanceof Block)
 			check((Block)e, env);
-		if (e instanceof If)
+		else if (e instanceof If)
 			check((If)e, env);
-		if (e instanceof Operation)
+		else if (e instanceof Operation)
 			check((Operation)e, env);
-		if (e instanceof Value)
+		else if (e instanceof Value)
 			check((Value)e, env);
-		if (e instanceof ArgumentList)
-			check((ArgumentList)e, env);
-		if (e instanceof Parameter)
+		else if (e instanceof Parameter)
 			check((Parameter)e, env);
+		else if (e instanceof Reference)
+			check((Reference)e, env);
+		// Literals are not checked, since they cannot be wrong
+		else if (!(e instanceof Literal))
+			throw new CheckException("Unchecked expression: " + e);
 	}
 	
 	public List<Variable> getVariables() {
@@ -207,6 +211,17 @@ public class Checker {
 				int refAt = subexp.indexOf(ref);
 				if (refAt == -1 || refAt + 1 >= subexp.size())
 					throw new CheckException("Missing argument(s) for function call ", ref, "!");
+				// Check all arguments to this reference
+				// We don't want to check an argument list by itself, since it cannot occur by
+				//  itself, and an error should be thrown if it is.
+				if (!(subexp.get(refAt + 1) instanceof ArgumentList))
+					check(subexp.get(refAt + 1), env);
+				else {
+					// Check all the arguments in the list
+					ArgumentList ls = (ArgumentList)subexp.get(refAt + 1);
+					for (Value arg: ls.getArgs())
+						check(arg, env);
+				}
 				Subexpression argLs = subexp.remove(refAt + 1);
 				// We want to get the argument list for this reference. If the argument
 				//  is not an argument list (which is common for single-argument functions),
@@ -214,9 +229,13 @@ public class Checker {
 				ArgumentList ls = null;
 				if (argLs instanceof Value) {
 					Value foundVal = (Value)argLs;
-					// If there is only one subexpression, we can safely extricate.
-					// However, if there are more, then that is an expression, which
-					//  does not match our expected argument list.
+					// There should only be one subexpression in the value at this point,
+					//  since it has necessarily been checked (and checking requires that
+					//  there is only 1 resulting subexpression).
+					// Thus, we extricate the subexpression to make the argument list.
+					// TODO it turns out that an argument list does *not* result in a value,
+					//  so in checking, we should validate that the value is not just an
+					//  argument list
 					if (foundVal.getSubexpressions().size() == 1)
 						argLs = foundVal.getSubexpressions().get(0);
 				}
@@ -239,7 +258,8 @@ public class Checker {
 				else
 					k = 0; // start k at index 0
 				
-				for (int j = 0; j<paramList.size(); j++) {
+				int j = 0;
+				for (; j<paramList.size(); j++) {
 					Parameter param = paramList.get(j);
 					// Find out whether param is necessary, optional, or implicit
 					if (param.getDefaultVal() == null && k == -1) {
@@ -293,7 +313,7 @@ public class Checker {
 				if (k != -1) {
 					// If k is not -1, then we had too many arguments specified!
 					throw new CheckException("Mismatch number of arguments in function call ",
-							ref, "! ", (ls.getArgs().size() - (k + 1))+"", " too many arguments given.");
+							ref, "! ", ((k + 1) - j)+"", " too many arguments given.");
 				}else if (missList != null) {
 					// We have too few arguments given
 					throw new CheckException("Mismatch number of arguments in function call ",
