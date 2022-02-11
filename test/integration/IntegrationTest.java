@@ -147,6 +147,17 @@ class IntegrationTest {
 		expectFromProgram(lines, 1);
 	}
 	
+	@Test
+	void testFunctionParameterDefaultValue() {
+		List<String> lines = List.of(
+			"let foo = 1",
+			"let bar = 2",
+			"let fx(baz = 3) = foo + bar + baz",
+			"fx()"
+		);
+		expectFromProgram(lines, 6);
+	}
+	
 	protected ProcessResult runProcess(List<String> cmd) {
 		ProcessBuilder processBuilder = new ProcessBuilder(cmd);
 		processBuilder.redirectErrorStream(true);

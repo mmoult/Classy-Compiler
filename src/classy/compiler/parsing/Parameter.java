@@ -23,7 +23,7 @@ public class Parameter extends Expression {
 		name = it.token().getValue();
 		it.next(end);
 		try {
-			if (it.match(Token.Type.EQUAL, end)) {
+			if (it.match(Token.Type.ASSIGN, end)) {
 				// We are going to set a default value for this parameter
 				it.next(end);
 				defaultVal = new Value();

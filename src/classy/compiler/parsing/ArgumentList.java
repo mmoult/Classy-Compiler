@@ -6,17 +6,17 @@ import java.util.List;
 import classy.compiler.lexing.Token;
 
 public class ArgumentList extends Subexpression {
-	protected List<Value> args = new ArrayList<>();
+	protected List<LabeledValue> args = new ArrayList<>();
 
 	public ArgumentList(Value parent) {
 		super(parent);
 	}
 	
-	public void addArg(Value val) {
+	public void addArg(LabeledValue val) {
 		args.add(val);
 	}
 	
-	public List<Value> getArgs() {
+	public List<LabeledValue> getArgs() {
 		return args;
 	}
 
@@ -27,6 +27,9 @@ public class ArgumentList extends Subexpression {
 
 	@Override
 	public void parse(TokenIterator it, int end) {
+		if (it.index == end)
+			return; // Void argument list
+		
 		if (it.match(Token.Type.VOID, end)) {
 			it.next(end);
 			return;
@@ -43,7 +46,7 @@ public class ArgumentList extends Subexpression {
 			int comma = it.find(Token.Type.COMMA, end);
 			if (comma == -1)
 				comma = end;
-			Value arg = new Value();
+			LabeledValue arg = new LabeledValue();
 			arg.parse(it, comma);
 			addArg(arg); // add it to the list
 			
@@ -70,6 +73,69 @@ public class ArgumentList extends Subexpression {
 		buf.append(")");
 		
 		return buf.toString();
+	}
+	
+	
+	public static class LabeledValue extends Value {
+		protected String label = null;
+		
+		public LabeledValue() {
+			super();
+		}
+		
+		public LabeledValue(Value val) {
+			this.subexpressions = val.subexpressions;
+			this.parent = val.parent;
+		}
+		public LabeledValue(Value val, String label) {
+			this(val); // use the other constructor for copying
+			this.label = label;
+		}
+		
+		@Override
+		public void parse(TokenIterator it, int end) {
+			// Look for a label, which is an identifier, then a '='
+			int startIndex = it.index;
+			try {
+				if (it.match(Token.Type.IDENTIFIER, end)) {
+					String maybeLabel = it.token().getValue();
+					it.next(end);
+					if (it.match(Token.Type.ASSIGN, end)) {
+						// We found a label!
+						this.label = maybeLabel;
+						it.next(end);
+					}
+				}
+			}catch(ParseException ignore) {
+				// There is no label if we went out of bounds
+			}
+			// No label was found, so revert back to starting index
+			if (label == null)
+				it.index = startIndex;
+			
+			// Regardless of whether there is a label, we want to find the value
+			//  that is being labeled.
+			super.parse(it, end);
+		}
+		
+		public void setLabel(String label) {
+			this.label = label;
+		}
+		public String getLabel() {
+			return label;
+		}
+		
+		@Override
+		public String pretty(int indents) {
+			StringBuffer buf = new StringBuffer();
+			if (label != null) {
+				buf.append(label);
+				buf.append("=");
+			}
+			buf.append(super.pretty(indents));
+			return buf.toString();
+		}
+		
 	}
 
 }

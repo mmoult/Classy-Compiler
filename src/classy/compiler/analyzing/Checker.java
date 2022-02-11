@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import classy.compiler.parsing.ArgumentList;
+import classy.compiler.parsing.ArgumentList.LabeledValue;
 import classy.compiler.parsing.Assignment;
 import classy.compiler.parsing.BinOp;
 import classy.compiler.parsing.Block;
@@ -243,8 +244,7 @@ public class Checker {
 					ls = (ArgumentList)argLs;
 				else {
 					ls = new ArgumentList(argLs.getParent());
-					Value arg = new Value(null, argLs);
-					ls.addArg(arg);
+					ls.addArg(new LabeledValue(new Value(null, argLs)));
 				}
 				
 				// We want to type check on the number of arguments the function needs.
@@ -296,7 +296,7 @@ public class Checker {
 					if (param.getDefaultVal() != null && k == -1) {
 						// If the default value was not null, and we are missing an argument, then
 						//  add the default to this call
-						ls.addArg(param.getDefaultVal());
+						ls.addArg(new LabeledValue(param.getDefaultVal()));
 						// Right now, k == -1, so we don't need to worry about modifying the length
 						//  of the argument list for matching calculations.
 					}

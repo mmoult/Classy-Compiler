@@ -38,22 +38,47 @@ public class Value extends Subexpression {
 			}
 			
 			if (it.match(Token.Type.OPEN_PAREN, end)) {
-				// We want to create a new value from the open to the close
+				// Seeing open and close parentheses can either be a parameter list or a nested value
 				it.next(end);
-				int foundEnd = it.find(Token.Type.CLOSE_PAREN, end);
-				Value val = new Value(this);
-				val.parse(it, foundEnd);
+				found = null;
+				
+				// We want to find the end
+				int foundEnd;
+				if (it.match(Token.Type.CLOSE_PAREN, end)) {
+					found = new ArgumentList(this);
+					foundEnd = it.index;
+				}else {
+					foundEnd = it.find(Token.Type.CLOSE_PAREN, end);
+					// We can determine the type if the next token is a equals or if there is
+					//  a comma before the end. Alternatively, if there are no tokens, then
+					//  we have a void argument list
+					
+					if (it.find(Token.Type.COMMA, foundEnd) != -1)
+						found = new ArgumentList(this);
+					else {
+						// Even if there are no commas, this may still be an argument list.
+						// We can know if a default value is set. Since there are no commas,
+						//  the default value must be set for the first parameter. If there
+						//  is no default value, then we guess it is a regular value, which
+						//  can be sorted out later during checking as needed.
+						if (it.match(Token.Type.IDENTIFIER, foundEnd)) {
+							int startAt = it.index;
+							it.next(foundEnd);
+							if (it.match(Token.Type.ASSIGN, foundEnd + 1))
+								found = new ArgumentList(this);
+							it.index = startAt;
+						}
+						if (found == null)
+							found = new Value(this);
+					}
+				}
+				
+				found.parse(it, foundEnd);
 				// We need to verify that the inner value ended at the expected close
 				if (it.index != foundEnd)
 					throw new ParseException("Unexpected token ", it.token(),
 							" in value! Close paranthesis ')' expected instead.");
 				
-				// Argument lists subsume their whole value. If we have encountered one,
-				//  extract it immediately instead of wrapping in a value
-				if (val.subexpressions.size() == 1 && val.subexpressions.get(0) instanceof ArgumentList)
-					found = val.subexpressions.get(0);
-				else
-					found = val;
 				it.next(end); // to get past the close
 			}else if (it.match(Token.Type.COMMA, end)) {
 				// We have an argument list here!
@@ -62,7 +87,7 @@ public class Value extends Subexpression {
 				Subexpression[] subs = {};
 				Value val = new Value(null, subexpressions.toArray(subs));
 				subexpressions.clear();
-				ls.addArg(val);
+				ls.addArg(new ArgumentList.LabeledValue(val));
 				it.next(end);
 				ls.parse(it, end);
 				subexpressions.add(ls);

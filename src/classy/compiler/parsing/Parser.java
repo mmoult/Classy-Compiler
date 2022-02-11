@@ -47,6 +47,14 @@ public class Parser {
 				found = new Value();
 			
 			found.parse(it, end); // then we extract it proper
+			// TODO default value optimizations
+			// For the sake of optimization, we may want to externalize the default value.
+			// If the value is a complex expression, we don't want it computed each time
+			//  it is used. Thus, we assign the default value to a new variable, the
+			//  reference for which may be used.
+			// If it turns out that the default value was only used once, optimization
+			//  will remove the redundant variable.
+			
 			expressions.add(found);
 			// There may be a semicolon here, which should be skipped
 			// And we want to skip any non-syntax tokens
