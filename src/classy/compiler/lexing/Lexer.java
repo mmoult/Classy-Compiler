@@ -22,7 +22,7 @@ public class Lexer {
 			String line = lines.get(i) + '\n';
 			
 			int lineLen = line.length();
-			int colNo = 1;
+			int colNo = 0;
 			// Feed the line to the processor. As soon as one processor will not take more,
 			//  we choose another processor and keep going. 
 			while (line.length() > 1) {

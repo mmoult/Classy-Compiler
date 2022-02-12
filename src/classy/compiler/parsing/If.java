@@ -27,9 +27,17 @@ public class If extends Subexpression {
 		then = new Value();
 		then.parse(it, end);
 		
-		// Now we can either see an "else" token, in which case a following block
-		// must have an explicit bound, or we can see no else and an implicit block
-		if (it.match(Token.Type.ELSE, end)) {
+		// Now there are several options for what we can see. If we see
+		// - an "if" token, then there is another branch to this if construct
+		// - an "else" token, then we have an explicit block for the else value
+		// - other, in which case, we have an implicit block
+		if (it.match(Token.Type.IF, end)) {
+			// This functions very similarly to the else case, but we can
+			//  shortcut typification and the unnecessary block.
+			If elseCondition = new If(null);
+			elseCondition.parse(it, end);
+			else_ = new Value(null, elseCondition);
+		}else if (it.match(Token.Type.ELSE, end)) {
 			it.next(end);
 			else_ = new Value();
 			else_.parse(it, end);
@@ -59,14 +67,17 @@ public class If extends Subexpression {
 		buf.append(then.pretty(indents + 1));
 		buf.append("\n");
 		buf.append(getIndents(indents));
-		buf.append("else ");
 		int nIndents = indents;
-		if (!(else_.getSubexpressions().get(0) instanceof Block)) {
-			buf.append("\n");
-			nIndents = indents + 1;
-			buf.append(getIndents(nIndents));
+		// Pretty print option for an else-if branch or implicit else
+		if (else_.subexpressions.size() == 1 && (else_.subexpressions.get(0) instanceof If ||
+				(else_.subexpressions.get(0) instanceof Block &&
+						((Block)else_.subexpressions.get(0)).impliedBounds))) {
+			buf.append(else_.pretty(indents));
+		}else {
+			buf.append("else\n");
+			buf.append(getIndents(nIndents + 1));
+			buf.append(else_.pretty(nIndents + 1));
 		}
-		buf.append(else_.pretty(nIndents));
 		return buf.toString();
 	}
 

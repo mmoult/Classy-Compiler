@@ -30,7 +30,7 @@ class IntegrationTest {
 	}
 	
 	@Test
-	void testLiteral() {
+	void literal() {
 		List<String> lines = List.of(
 			"-2"
 		);
@@ -38,7 +38,7 @@ class IntegrationTest {
 	}
 	
 	@Test
-	void testNestedFunction() {
+	void nestedFunction() {
 		List<String> lines = List.of(
 			"let foo(x, y, z) = {",
 			"	let bar(x, y, z) = {",
@@ -52,7 +52,7 @@ class IntegrationTest {
 	}
 	
 	@Test
-	void testVarBlock() {
+	void varBlock() {
 		List<String> lines = List.of(
 			"let foo = 10",
 			"foo"
@@ -61,7 +61,7 @@ class IntegrationTest {
 	}
 	
 	@Test
-	void testFunction() {
+	void function() {
 		List<String> lines = List.of(
 			"let negate(num) = -num",
 			"negate(-1)"
@@ -70,7 +70,7 @@ class IntegrationTest {
 	}
 	
 	@Test
-	void testOperators() {
+	void operators() {
 		List<String> lines = List.of(
 			"3 - 6 / 2 <> 1"
 		);
@@ -78,7 +78,7 @@ class IntegrationTest {
 	}
 	
 	@Test
-	void testParentheses() {
+	void parentheses() {
 		List<String> lines = List.of(
 			"2 * (3 - 5) >= 0"
 		);
@@ -86,7 +86,7 @@ class IntegrationTest {
 	}
 	
 	@Test
-	void testUndefinedVar() {
+	void undefinedVar() {
 		List<String> lines = List.of(
 			"let fx(a) = {",
 			"	a + 3",
@@ -97,7 +97,7 @@ class IntegrationTest {
 	}
 	
 	@Test
-	void testVoidParamFunc() {
+	void voidCall() {
 		List<String> lines = List.of(
 			"let voidcaller() = {",
 			"	7",
@@ -108,7 +108,7 @@ class IntegrationTest {
 	}
 	
 	@Test
-	void testFxPrecedence() {
+	void fxPrecedence() {
 		List<String> lines = List.of(
 			"let sum3or5(max) = {",
 			"	if max < 3",
@@ -125,7 +125,7 @@ class IntegrationTest {
 	}
 	
 	@Test
-	void testRecursiveFx() {
+	void recursiveFx() {
 		List<String> lines = List.of(
 			"let factorial(num) = {",
 			"	if num <= 0",
@@ -138,7 +138,7 @@ class IntegrationTest {
 	}
 	
 	@Test
-	void testFunctionalExternality() {
+	void functionalExternality() {
 		List<String> lines = List.of(
 			"let global = 1",
 			"let foo() = global",
@@ -148,7 +148,7 @@ class IntegrationTest {
 	}
 	
 	@Test
-	void testFunctionParameterDefaultValue() {
+	void paramDefaultValue() {
 		List<String> lines = List.of(
 			"let foo = 1",
 			"let bar = 2",
@@ -156,6 +156,19 @@ class IntegrationTest {
 			"fx()"
 		);
 		expectFromProgram(lines, 6);
+	}
+	
+	@Test
+	void labeledArguments() {
+		List<String> lines = List.of(
+			"let divide(dividend, divisor) = dividend / divisor",
+			"let first = divide (6, 2)",
+			"let second = divide (divisor = 2, 6)",
+			"let third = divide (2, dividend=6)",
+			"let fourth = divide (divisor = 2, dividend = 6)",
+			"first + second + third + fourth"
+		);
+		expectFromProgram(lines, 3*4);
 	}
 	
 	protected ProcessResult runProcess(List<String> cmd) {

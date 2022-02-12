@@ -55,9 +55,57 @@ public class Checker {
 			check((If)e, env);
 		else if (e instanceof Operation)
 			check((Operation)e, env);
-		else if (e instanceof Value)
-			check((Value)e, env);
-		else if (e instanceof Parameter)
+		else if (e instanceof Value) { // Since Value is so common a case, do it here to avoid another function call
+			Value val = (Value)e;
+			// We have to perform grouping now that we know the type of all identifiers
+			List<Subexpression> sub = val.getSubexpressions();
+			// Evaluate function application very first
+			for (int i=0; i<sub.size(); i++) {
+				if (sub.get(i) instanceof Reference)
+					check((Reference)sub.get(i), env);
+			}
+			
+			// Then evaluate operator application, which has a lower precedence
+			if (val.getSubexpressions().size() > 1) {
+				// We could not do this during parsing because of order of operations:
+				//  eg "2 + 4 / 1" -> "2 + (4 / 1)", even though the plus is seen first.
+				// Also, we could not know whether each identifier was a function until
+				//  checking, which is why we do it now.
+				TreeSet<Float> precs = new TreeSet<>();
+				for (int i = 0; i < sub.size(); i++) {
+					Float prec = sub.get(i).getPrecedence();
+					if (prec != null)
+						precs.add(prec);
+				}
+				for (Float prec: precs) {
+					boolean tryAgain;
+					do {
+						tryAgain = false;
+						for (int i = 0; i < sub.size(); i++) {
+							Subexpression sexp = sub.get(i);
+							if (!sexp.isLink())
+								continue;
+							Float subPrec = sexp.getPrecedence();
+							if (subPrec == null)
+								continue;
+							if (sexp.getPrecedence().equals(prec)) {
+								sexp.evaluateChain(i, sub);
+								tryAgain = true;
+								break; // restart this precedence after the list has been modified
+							}
+						}
+					}while(tryAgain);
+				}
+			}
+			
+			// After all the grouping is complete, this value should not have more than one subexpression
+			if (val.getSubexpressions().size() > 1)
+				throw new CheckException("Unexpected ", val.getSubexpressions().get(1), " found in value!");
+			
+			// Lastly, we want to perform a final check
+			for (Subexpression se: val.getSubexpressions())
+				check(se, env);
+		}else if (e instanceof Parameter)
 			check((Parameter)e, env);
 		else if (e instanceof Reference)
 			check((Reference)e, env);
@@ -249,76 +297,91 @@ public class Checker {
 				
 				// We want to type check on the number of arguments the function needs.
 				// However, this gets more complicated since there may be default values
-				//  specified by the function. 
-				List<Parameter> paramList = source.getParamList();
-				String missList = null;
-				int k = ls.getArgs().size(); // the index in the argument list
-				if (k == 0)
-					k = -1; // k is set to -1 when there are no more arguments
-				else
-					k = 0; // start k at index 0
+				//  specified by the function.
 				
-				int j = 0;
-				for (; j<paramList.size(); j++) {
-					Parameter param = paramList.get(j);
-					// Find out whether param is necessary, optional, or implicit
-					if (param.getDefaultVal() == null && k == -1) {
-						// If this is a necessary param (no default value), then the
-						//  number of arguments *must* be greater than j:
-						//  index 0 requires argumentsNum > 0
-						// TODO I want to make it such that the caller can specify the name
-						//  of the param used in free form. For example:
-						//   let foo(bar = 0, sam = 1) = ...
-						//   foo(sam=3)
-						StringBuffer misses = new StringBuffer();
-						boolean first = true;
+				// We want to check that all the arguments given match with parameters of
+				//  the function, and that all necessary parameters of the function have
+				//  been satisfied by corresponding arguments.
+				List<Parameter> paramList = source.getParamList();
+				// Furthermore, in translation to LLVM bytecode, we need all arguments to
+				//  be in the order of the parameters. Therefore, we can easily order
+				//  them here in checking.
+				LabeledValue[] sortedArgs = new LabeledValue[paramList.size()];
+				// Our first approach is to go through each argument sequentially and
+				//  place it if it has a label (we cannot place any positional arguments
+				//  until all labeled arguments have been placed since we don't know
+				//  beforehand since labeled arguments do not have to be in order.
+				// If a label has been provided for an argument, it *must* match one of
+				//  the parameter names in the called function.
+				for (LabeledValue arg: ls.getArgs()) {
+					if (arg.getLabel() != null) {
+						int j = 0;
 						for (; j<paramList.size(); j++) {
-							if (first)
-								first = false;
-							else
-								misses.append(", ");
-							param = paramList.get(j);
-							if (param.getDefaultVal() == null) {
-								misses.append("\"");
-								misses.append(param.getName());
-								misses.append("\"");
-							}else if (param.getImplicit())
-								break; // there can be no regular params after the first implicit
+							Parameter p = paramList.get(j);
+							if (!p.getImplicit() && arg.getLabel().equals(p.getName()))
+								break;
 						}
-						missList = misses.toString();
-						break;
-					}else if (param.getImplicit()) {
-						if (k != -1)
-							// If this is an implicit param, then there *must not* be a
-							//  corresponding argument
-							break;
-					}
-					if (param.getDefaultVal() != null && k == -1) {
-						// If the default value was not null, and we are missing an argument, then
-						//  add the default to this call
-						ls.addArg(new LabeledValue(param.getDefaultVal()));
-						// Right now, k == -1, so we don't need to worry about modifying the length
-						//  of the argument list for matching calculations.
-					}
-					
-					// With no type system or positional specifications in place to
-					//  differentiate between arguments, we assume that all given
-					//  arguments are in order.
-					if (k != -1) {
-						k++;
-						if (k == ls.getArgs().size())
-							k = -1; // we have reached the end						
+						if (j == paramList.size()) // we could not find the specified parameter!
+							throw new CheckException("Unrecognized parameter label \"", arg.getLabel(),
+									"\" for function \"", source.getVarName(),
+									"\" requested by argument list of ", ref, "!");
+						if (sortedArgs[j] != null) // the parameter was already specified!
+							throw new CheckException("Duplicate parameter label \"", arg.getLabel(),
+									" requested by argument list of ", ref, "!");
+						sortedArgs[j] = arg; // set this argument in its place
 					}
 				}
-				if (k != -1) {
-					// If k is not -1, then we had too many arguments specified!
-					throw new CheckException("Mismatch number of arguments in function call ",
-							ref, "! ", ((k + 1) - j)+"", " too many arguments given.");
-				}else if (missList != null) {
-					// We have too few arguments given
-					throw new CheckException("Mismatch number of arguments in function call ",
-							ref, "! Call missing arguments for ", missList, ".");
+				// Now we must iterate over the list again to get all positional arguments
+				int k = 0; // where to place the next argument in the sorted list
+				int j = 0; // how far we are in the given argument list
+				for (; j < ls.getArgs().size(); j++) {
+					LabeledValue arg = ls.getArgs().get(j);
+					if (arg.getLabel() != null)
+						continue;
+					// We have an argument to place...
+					while (true) {
+						// Check if there is already a sorted argument at t
+						if (sortedArgs[k] != null)
+							k++;
+						// or if the parameter at t has the wrong argument (but has a default value)
+						// or if the parameter at t is implicit (and thus may receive no argument).
+						else if (paramList.get(k).getImplicit())
+							sortedArgs[k] = new LabeledValue(paramList.get(k).getDefaultVal());
+						else if (k >= sortedArgs.length)
+							throw new CheckException("Mismatch number of arguments in function call ",
+									ref, "! ", (ls.getArgs().size() - j)+"", " too many arguments given.");
+						else {
+							sortedArgs[k++] = arg;
+							break; // we placed it, so we can break out							
+						}
+					}
 				}
+				// We must bring the sorted list to completion with any necessary default values
+				for (; k < paramList.size(); k++) {
+					if (sortedArgs[k] != null)
+						continue; // if this index was already used, skip it
+					Parameter p = paramList.get(k);
+					if (p.getDefaultVal() == null) {
+						StringBuffer missList = new StringBuffer("\"");
+						missList.append(p.getName());
+						missList.append("\"");
+						for (; k < paramList.size(); k++) {
+							if (sortedArgs[k] != null || paramList.get(k).getImplicit())
+								continue;
+							missList.append(", \"");
+							missList.append(paramList.get(k).getName());
+							missList.append("\"");
+						}
+						throw new CheckException("Mismatch number of arguments in function call ",
+								ref, "! Call missing arguments for ", missList.toString(), ".");
+					}
+					// If there was a default value given, use it
+					sortedArgs[k] = new LabeledValue(p.getDefaultVal());
+				}
+				// Finally, we update the argument list to match our new sorted list
+				ls.getArgs().clear();
+				for (LabeledValue arg: sortedArgs)
+					ls.addArg(arg);
 				
 				// Set the reference's argument value
 				Value args = new Value(null, ls);
@@ -339,57 +402,6 @@ public class Checker {
 		check(ife.getCondition(), env);
 		check(ife.getThen(), env);
 		check(ife.getElse(), env);
-	}
-	
-	protected void check(Value val, List<Frame> env) {
-		// We have to perform grouping now that we know the type of all identifiers
-		List<Subexpression> sub = val.getSubexpressions();
-		// Evaluate function application very first
-		for (int i=0; i<sub.size(); i++) {
-			if (sub.get(i) instanceof Reference)
-				check((Reference)sub.get(i), env);
-		}
-		
-		// Then evaluate operator application, which has a lower precedence
-		if (val.getSubexpressions().size() > 1) {
-			// We could not do this during parsing because of order of operations:
-			//  eg "2 + 4 / 1" -> "2 + (4 / 1)", even though the plus is seen first.
-			// Also, we could not know whether each identifier was a function until
-			//  checking, which is why we do it now.
-			TreeSet<Float> precs = new TreeSet<>();
-			for (int i = 0; i < sub.size(); i++) {
-				Float prec = sub.get(i).getPrecedence();
-				if (prec != null)
-					precs.add(prec);
-			}
-			for (Float prec: precs) {
-				boolean tryAgain;
-				do {
-					tryAgain = false;
-					for (int i = 0; i < sub.size(); i++) {
-						Subexpression sexp = sub.get(i);
-						if (!sexp.isLink())
-							continue;
-						Float subPrec = sexp.getPrecedence();
-						if (subPrec == null)
-							continue;
-						if (sexp.getPrecedence().equals(prec)) {
-							sexp.evaluateChain(i, sub);
-							tryAgain = true;
-							break; // restart this precedence after the list has been modified
-						}
-					}
-				}while(tryAgain);
-			}
-		}
-		
-		// After all the grouping is complete, this value should not have more than one subexpression
-		if (val.getSubexpressions().size() > 1)
-			throw new CheckException("Unexpected ", val.getSubexpressions().get(1), " found in value!");
-		
-		// Lastly, we want to perform a final check
-		for (Subexpression e: val.getSubexpressions())
-			check(e, env);
 	}
 	
 	protected void check(Operation op, List<Frame> env) {

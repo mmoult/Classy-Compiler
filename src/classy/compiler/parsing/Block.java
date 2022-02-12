@@ -104,14 +104,25 @@ public class Block extends Subexpression {
 	
 	@Override
 	public String pretty(int indents) {
-		StringBuffer buf = new StringBuffer("{\n");
-		for (Expression e: body) {
-			buf.append(getIndents(indents + 1));
-			buf.append(e.pretty(indents + 1));
-			buf.append("\n");
+		StringBuffer buf = new StringBuffer();
+		int showIndents = indents;
+		if (!impliedBounds) {
+			indents += 1;
+			buf.append("{");
 		}
-		buf.append(getIndents(indents));
-		buf.append("}");
+		boolean first = true;
+		for (Expression e: body) {
+			if (first)
+				first = false;
+			else
+				buf.append("\n");
+			buf.append(getIndents(showIndents));
+			buf.append(e.pretty(showIndents));
+		}
+		if (!impliedBounds) {
+			buf.append(getIndents(indents));
+			buf.append("}");			
+		}
 		return buf.toString();
 	}
 

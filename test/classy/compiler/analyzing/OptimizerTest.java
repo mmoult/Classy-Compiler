@@ -2,6 +2,7 @@ package classy.compiler.analyzing;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static classy.compiler.util.ParsingUtil.*;
 
 import java.util.List;
 
@@ -10,9 +11,9 @@ import org.junit.jupiter.api.Test;
 
 import classy.compiler.lexing.Token;
 import classy.compiler.parsing.Literal;
-import classy.compiler.parsing.Parser;
 import classy.compiler.parsing.Subexpression;
 import classy.compiler.parsing.Value;
+
 
 public class OptimizerTest {
 	Optimizer opt;
@@ -21,23 +22,18 @@ public class OptimizerTest {
 	protected void setUp() throws Exception {
 		opt = new Optimizer();
 	}
-	
-	protected Value makeProgram(List<Token> tokens) {
-		Parser parse = new Parser(tokens);
-		return parse.getProgram();
-	}
 
 	@Test
 	void optIf() {
 		// We have to make the program, so the best way is to do it via
 		//  the regular path. But we can skip lexing
 		List<Token> tokens = List.of(
-			new Token("if", Token.Type.IF, -1, -1),
-			new Token("0", Token.Type.NUMBER, -1, -1),
-			new Token("\n", Token.Type.NEW_LINE, -1, -1),
-			new Token("6", Token.Type.NUMBER, -1, -1),
-			new Token("\n", Token.Type.NEW_LINE, -1, -1),
-			new Token("7", Token.Type.NUMBER, -1, -1)
+			mockToken(Token.Type.IF),
+			mockToken("0", Token.Type.NUMBER),
+			mockToken(Token.Type.NEW_LINE),
+			mockToken("6", Token.Type.NUMBER),
+			mockToken(Token.Type.NEW_LINE),
+			mockToken("7", Token.Type.NUMBER)
 		);
 		Value program = makeProgram(tokens);
 		
@@ -51,12 +47,12 @@ public class OptimizerTest {
 		
 		// Now we want to check that the then case works too
 		tokens = List.of(
-			new Token("if", Token.Type.IF, -1, -1),
-			new Token("1", Token.Type.NUMBER, -1, -1),
-			new Token("\n", Token.Type.NEW_LINE, -1, -1),
-			new Token("6", Token.Type.NUMBER, -1, -1),
-			new Token("\n", Token.Type.NEW_LINE, -1, -1),
-			new Token("7", Token.Type.NUMBER, -1, -1)
+			mockToken(Token.Type.IF),
+			mockToken("1", Token.Type.NUMBER),
+			mockToken(Token.Type.NEW_LINE),
+			mockToken("6", Token.Type.NUMBER),
+			mockToken(Token.Type.NEW_LINE),
+			mockToken("7", Token.Type.NUMBER)
 		);
 		program = makeProgram(tokens);
 		opt.optimize(List.of(), program);
@@ -70,13 +66,13 @@ public class OptimizerTest {
 	@Test
 	void optOperations() {
 		List<Token> tokens = List.of(
-			new Token("10", Token.Type.NUMBER, -1, -1),
-			new Token("/", Token.Type.SLASH, -1, -1),
-			new Token("2", Token.Type.NUMBER, -1, -1),
-			new Token("+", Token.Type.PLUS, -1, -1),
-			new Token("3", Token.Type.NUMBER, -1, -1),
-			new Token("-", Token.Type.MINUS, -1, -1),
-			new Token("4", Token.Type.NUMBER, -1, -1)
+			mockToken("10", Token.Type.NUMBER),
+			mockToken(Token.Type.SLASH),
+			mockToken("2", Token.Type.NUMBER),
+			mockToken(Token.Type.PLUS),
+			mockToken("3", Token.Type.NUMBER),
+			mockToken(Token.Type.MINUS),
+			mockToken("4", Token.Type.NUMBER)
 		);
 		Value program = makeProgram(tokens);
 		// Unfortunately we have to check this program to enforce proper groupings

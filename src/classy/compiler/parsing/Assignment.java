@@ -22,6 +22,7 @@ public class Assignment extends Expression {
 		if (!it.match(Token.Type.LET, end))
 			throw new ParseException("Definition must begin with \"let\" keyword! ", it.token(), 
 					" found instead.");
+		int assignmentStart = it.index;
 		it.next(end);
 		
 		if (!it.match(Token.Type.IDENTIFIER, end))
@@ -71,6 +72,15 @@ public class Assignment extends Expression {
 					it.token(), " found instead.");
 		it.next(end);
 		
+		try {
+			// We want to match to the next token (does not matter which)
+			// This allows us to put the value on a different line than the =
+			it.match(Token.Type.PERIOD, end);
+		}catch(ParseException pe) {
+			// If we reach an end, then the value is missing
+			throw new ParseException("Missing value in assignment of \"", varName, "\" beginning with ",
+					it.tokens.get(assignmentStart), ".");
+		}
 		value = new Value();
 		value.parse(it, end);
 	}
