@@ -23,6 +23,8 @@ public class IdentifierProcessor extends Processor {
 			return Token.Type.LAMBDA;
 		case "void":
 			return Token.Type.VOID;
+		case "self":
+			return Token.Type.SELF;
 		}
 		return Token.Type.IDENTIFIER;
 	}

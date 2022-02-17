@@ -13,11 +13,13 @@ import classy.compiler.parsing.Reference;
  */
 public class Frame {
 	protected boolean fxFrame;
+	protected String functionName;
 	protected Map<String, Variable> locals;
 	protected Set<Reference> externalities;
 	
-	public Frame(boolean fxFrame) {
-		this.fxFrame = fxFrame;
+	public Frame(String fxName) {
+		this.fxFrame = fxName != null;
+		this.functionName = fxName;
 		locals = new HashMap<>();
 		externalities = new HashSet<>();
 	}
@@ -36,6 +38,10 @@ public class Frame {
 	
 	public void addExternality(Reference ref) {
 		externalities.add(ref);
+	}
+	
+	public String getFunctionName() {
+		return functionName;
 	}
 	
 }

@@ -36,7 +36,7 @@ public class Checker {
 		//  If there is only one usage of a variable, it can be replaced with the value.
 		
 		List<Frame> environment = new ArrayList<>();
-		environment.add(new Frame(false));
+		environment.add(new Frame(null));
 		check(program, environment);
 		
 		if (optimize) {
@@ -139,7 +139,7 @@ public class Checker {
 			// add this function's name to the environment to make recursive calls possible
 			curScope.allocate(name, var);
 			// Then create a new function scope where the parameters will reside
-			Frame fxScope = new Frame(true);
+			Frame fxScope = new Frame(asgn.getVarName());
 			// Even though we will need to look through a variable list later, the elements
 			//  we now add are appended at the end, so they should not effect the runtime.
 			// We actually need these variables saved before the function value check in
@@ -238,10 +238,18 @@ public class Checker {
 		int i = env.size() - 1;
 		for (; i>=0 && referenced==null; i--) {
 			Frame search = env.get(i);
+			if (name.equals("self") && search.functionName != null)
+				name = search.functionName; // define "self"
 			referenced = search.defined(name);
 		}
-		if (referenced == null)
+		if (referenced == null) {
+			// If the name is "self", then the user tried to use self in a non-function definition
+			if (name.equals("self"))
+				throw new CheckException("\"self\" keyword may only be used in a function definition! Found ",
+						ref, ".");
+			// otherwise we just have a regular undeclared variable issue
 			throw new CheckException("Reference ", ref, " to an undeclared variable \"", name, "\"!");
+		}
 		// Add this ref as an externality for all passed function scopes
 		for (int j = i + 2; j < env.size(); j++) {
 			if (env.get(j).isFunction())
@@ -391,7 +399,7 @@ public class Checker {
 	}
 	
 	protected void check(Block block, List<Frame> env) {
-		env.add(new Frame(false));
+		env.add(new Frame(null));
 		// check all children
 		for (Expression e: block.getBody())
 			check(e, env);

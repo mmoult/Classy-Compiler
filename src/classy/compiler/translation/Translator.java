@@ -220,7 +220,7 @@ public class Translator {
 				callComps[0] = "%";
 				callComps[1] = Integer.toString(returned);
 				callComps[2] = " = call i32 @";
-				callComps[3] = ref.getVarName();
+				callComps[3] = name;
 				callComps[4] = "(";
 				int j = 5;
 				for (i=0; i<args.length; i++) {

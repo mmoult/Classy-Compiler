@@ -13,7 +13,7 @@ public class Reference extends Subexpression {
 
 	@Override
 	public void parse(TokenIterator it, int end) {
-		if (!it.match(Token.Type.IDENTIFIER, end))
+		if (!(it.match(Token.Type.IDENTIFIER, end) || it.match(Token.Type.SELF, end)))
 			throw new ParseException("Missing identifier token in reference! ", it.token(),
 					" found instead.");
 		this.varName = it.token().getValue();

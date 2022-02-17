@@ -132,6 +132,7 @@ public class Value extends Subexpression {
 		case IF:
 			return new If(this);
 		case IDENTIFIER:
+		case SELF:
 			return new Reference(this);
 		case PLUS:
 			return new BinOp.Addition(this);

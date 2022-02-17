@@ -130,7 +130,7 @@ class IntegrationTest {
 			"let factorial(num) = {",
 			"	if num <= 0",
 			"		1",
-			"	num * factorial(num - 1)",
+			"	num * self(num - 1)",
 			"}",
 			"factorial 4"
 		);

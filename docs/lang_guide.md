@@ -25,18 +25,18 @@ Common values to use for assignments include literals (such as `6` or `-13`), op
 Assignments are not subexpressions, and thus, cannot be used directly in values. However, they can be defined in blocks, and will be usable for all statements beneath them in that block.
 
 ### Naming
-The name used for a value assignment must be a single identifier. Indentifiers are arbitrary sequences of symbols beginning with a non-numeric symbol and terminating at the first prohibited symbol, most prominent of which is whitespace. Other prohibited symbols include punctuation (such as '.', ',', '?', and '!'), braces and parentheses ('(', ')', '{', '}'), and common math and logical operators ('+', '-', '*', '/', '&', '|'). 
+The name used for a value assignment must be a single identifier. Indentifiers are arbitrary sequences of symbols beginning with a non-numeric symbol and terminating at the first prohibited symbol, most prominent of which is whitespace. Other prohibited symbols include punctuation (such as `.`, `,`, `?`, and `!`), braces and parentheses (`(`, `)`, `{`, `}`), and common math and logical operators (`+`, `-`, `*`, `/`, `&`, `|`). 
 
 ### Functions
 Function definitions are a specific type of assignment which include function parameters. A function can have any nonnegative number of arguments, including 0. Each argument name must be separated from others by a comma in the parameter list. For example, a function definition with three arguments would look like:
 ```
 let NAME(A, B, C) = VALUE
 ```
-where "NAME" is the function name, and the three parameters are named "A", "B", and "C". These three parameter names can be used in the function value. Thus, a function that will simply sum its three arguments may be defined as:
+where `NAME` is the function name, and the three parameters are named `A`, `B`, and `C`. These three parameter names can be used in the function value. Thus, a function that will simply sum its three arguments may be defined as:
 ```
 let sum3(x, y, z) = x + y + z
 ```
-Furthermore, the function itself may be used recursively in the value definition.
+Furthermore, the function itself may be used recursively in the value definition. To reduce redundancy, `self` may be used instead of the function name.
 
 The value of the function operates in the same scope of the assignment. This means that function values can use references to assignments earlier on in the scope. If the definition for function B appears after the definition for variable A in the same scope, the value of function B will be able to use variable A. This is illustrated below:
 ```
@@ -63,7 +63,7 @@ which would yield 3, 6, and 13, respectively.
 
 Calling a function without any arguments requires an empty argument list. This can be done by using the `void` keyword (such as `sum void`), or by using an empty set of parentheses (such as `sum()`).
 
-For clarity, and especially with use of default parameter values in a functional assignment, it may be useful to label an argument with the intended parameter. To do so, use the value preceded by the paremeter name and the assignment symbol '='. When using argument labeling, arguments do not need to be given in the same order that they are defined in the function parameter list. For example, consider the program excerpt below:
+For clarity, and especially with use of default parameter values in a functional assignment, it may be useful to label an argument with the intended parameter. To do so, use the value preceded by the paremeter name and the assignment symbol `=`. When using argument labeling, arguments do not need to be given in the same order that they are defined in the function parameter list. For example, consider the program excerpt below:
 ```
 let divide(dividend, divisor) = dividend / divisor
 let first = divide (6, 2)
@@ -104,9 +104,9 @@ if CONDITION
 else
 	ELSE
 ```
-where "CONDITION", "THEN", and "ELSE" are all values.
+where `CONDITION`, `THEN`, and `ELSE` are all values.
 
-There are different conditional brace styles, and Classy accommodates them. If the "THEN" or "ELSE" value occurs on the same line as the CONDITION, then there must be a semicolon to divide between the condition and the value. Consider the following program excerpts which set `threshold` to 0 if `num` is no greater than 5, or 1 otherwise:
+There are different conditional brace styles, and Classy accommodates them. If the THEN or ELSE value occurs on the same line as the CONDITION, then there must be a semicolon to divide between the condition and the value. Consider the following program excerpts which set `threshold` to 0 if `num` is no greater than 5, or 1 otherwise:
 
 K&R:
 ```
@@ -142,7 +142,7 @@ if CONDITION2
 else
 	ELSE
 ```
-where "CONDITION1", "CONDITION2", "THEN1", "THEN2", and "ELSE" are all values. An arbitrary number of branches may be used with the same multi-branching form. 
+where `CONDITION1`, `CONDITION2`, `THEN1`, `THEN2`, and `ELSE` are all values. An arbitrary number of branches may be used with the same multi-branching form. 
 
 In fact, a conditional construct does not need to have more than one explicit branch. In imperative programming languages, there is a construct known as the "one-armed if", or simply the "if without an else". Such a construct is not technically possible in Classy, but a mimicking construct is possible by the following form:
 ```
@@ -182,14 +182,14 @@ let pascal(row: Nat) = {
 Observe that the value of the function is a block. Within that block, there are conditional constructs, variable definitions, and a recursive function definition (which itself is a block).
 
 ## Documentation
-It is good practice to include comments to document the reasoning behind program approach and execution. All comments begin with the pound character (#). By default, a comment will go from the "#" until the end of the line. However, a comment can be made to span multiple lines with "#|" "|#" pairs, where "#|" is the opening, and "|#" is the closing. For example:
+It is good practice to include comments to document the reasoning behind program approach and execution. All comments begin with the pound character (`#`). By default, a comment will go from the `#` until the end of the line. However, a comment can be made to span multiple lines with `#|` `|#` pairs, where `#|` is the opening, and `|#` is the closing. For example:
 ```
 # Single-line comment goes until the end of the line
 #| Multi-line comments cover from the open
 and go until the line of the close |#
 ```
 
-It is important to note that multi-line comments go from the open "#|" to the end of the line the close "#|". The purpose of this is twofold: First, documentation can be more compact and symmetrical. Second, all statements are the first non-whitespace characters of the line, which increases readability and precludes statements hiding after long comments.
+It is important to note that multi-line comments go from the open `#|` to the end of the line the close `#|`. The purpose of this is twofold: First, documentation can be more compact and symmetrical. Second, all statements are the first non-whitespace characters of the line, which increases readability and precludes statements hiding after long comments.
 
 Two different documentation styles are recommended:
 ```
