@@ -5,7 +5,7 @@ import java.util.List;
 
 import classy.compiler.lexing.Token;
 
-public class Assignment extends Expression {
+public class Assignment extends NameBinding {
 	protected Block parent;
 	protected String varName;
 	protected List<Parameter> paramList = null;

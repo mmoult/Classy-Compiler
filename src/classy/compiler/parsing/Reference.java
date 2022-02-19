@@ -1,10 +1,11 @@
 package classy.compiler.parsing;
 
+import classy.compiler.analyzing.Variable;
 import classy.compiler.lexing.Token;
 
 public class Reference extends Subexpression {
 	protected String varName;
-	protected Assignment linkedTo;
+	protected Variable linkedTo;
 	protected Value arguments;
 	
 	public Reference(Value parent) {
@@ -33,10 +34,10 @@ public class Reference extends Subexpression {
 		return parent;
 	}
 	
-	public void setLinkedTo(Assignment asgn) {
-		this.linkedTo = asgn;
+	public void setLinkedTo(Variable var) {
+		this.linkedTo = var;
 	}
-	public Assignment getLinkedTo() {
+	public Variable getLinkedTo() {
 		return linkedTo;
 	}
 	
@@ -52,10 +53,21 @@ public class Reference extends Subexpression {
 		if (arguments == null)
 			return varName;
 		else {
-			if (arguments.getSubexpressions().get(0) instanceof ArgumentList)
+			if (arguments.getSubexpressions().get(0) instanceof Tuple)
 				return varName + arguments.pretty(indents);
 			return varName + "(" + arguments.pretty(indents) + ")";
 		}
+	}
+	
+	public Reference clone() {
+		Reference cloned = new Reference(parent);
+		cloned.varName = varName;
+		if (arguments != null)
+			cloned.arguments = arguments.clone();
+		cloned.linkedTo = linkedTo; // referencing the same variable, so no cloning here
+		if (linkedTo != null)
+			linkedTo.addRef(cloned);
+		return cloned;
 	}
 
 }

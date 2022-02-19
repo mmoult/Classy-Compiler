@@ -43,4 +43,6 @@ public abstract class Subexpression extends Expression {
 		this.parent = parent;
 	}
 	
+	public abstract Subexpression clone();
+	
 }

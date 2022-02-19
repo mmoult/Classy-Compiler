@@ -2,7 +2,7 @@ package classy.compiler.parsing;
 
 import classy.compiler.lexing.Token;
 
-public class Parameter extends Expression {
+public class Parameter extends NameBinding {
 	protected String name;
 	protected Value defaultVal = null;
 	protected boolean implicit = false;

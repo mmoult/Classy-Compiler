@@ -267,4 +267,17 @@ public abstract class BinOp extends Operation {
 		return "binary operator";
 	}
 
+	public BinOp clone() {
+		BinOp outer = this;
+		BinOp cloned = new BinOp(parent, this.operation) {
+			@Override
+			protected String prettyOperation() {
+				return outer.prettyOperation();
+			}
+		};
+		cloned.lhs = this.lhs.clone();
+		cloned.rhs = this.rhs.clone();
+		
+		return cloned;
+	}
 }

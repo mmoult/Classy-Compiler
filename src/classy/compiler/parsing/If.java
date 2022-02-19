@@ -85,5 +85,13 @@ public class If extends Subexpression {
 	public boolean isLink() {
 		return false;
 	}
+	
+	public If clone() {
+		If cloned = new If(parent);
+		cloned.condition = condition.clone();
+		cloned.then = then.clone();
+		cloned.else_ = else_.clone();
+		return cloned;
+	}
 
 }

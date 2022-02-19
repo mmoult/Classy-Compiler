@@ -129,4 +129,19 @@ public class Block extends Subexpression {
 		return buf.toString();
 	}
 
+	@Override
+	public Block clone() {
+		Block cloned = new Block();
+		cloned.parent = parent;
+		cloned.impliedBounds = impliedBounds;
+		for (Expression e: body) {
+			if (e instanceof Subexpression) {
+				Subexpression sub = (Subexpression)e;
+				cloned.body.add(sub.clone());
+			}else
+				cloned.body.add(e);
+		}
+		return null;
+	}
+
 }

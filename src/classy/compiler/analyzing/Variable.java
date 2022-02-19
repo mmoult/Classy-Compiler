@@ -3,19 +3,21 @@ package classy.compiler.analyzing;
 import java.util.ArrayList;
 import java.util.List;
 
-import classy.compiler.parsing.Assignment;
+import classy.compiler.parsing.NameBinding;
 import classy.compiler.parsing.Reference;
 import classy.compiler.parsing.Value;
 
 public class Variable {
 	protected String name;
 	protected Value value;
-	protected Assignment source;
+	protected NameBinding source;
 	protected List<Reference> references;
 	
-	public Variable(String name, Value value, Assignment source) {
+	public Variable(String name, Value value, NameBinding source) {
 		this.name = name;
 		this.value = value;
+		if (source != null)
+			source.setSourced(this);
 		this.source = source;
 		
 		references = new ArrayList<>();
@@ -27,7 +29,7 @@ public class Variable {
 	public Value getValue() {
 		return value;
 	}
-	public Assignment getSource() {
+	public NameBinding getSource() {
 		return source;
 	}
 	public List<Reference> getRef() {

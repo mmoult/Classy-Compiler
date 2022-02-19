@@ -8,14 +8,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-import classy.compiler.parsing.ArgumentList;
-import classy.compiler.parsing.ArgumentList.LabeledValue;
+import classy.compiler.parsing.Tuple;
+import classy.compiler.parsing.Tuple.LabeledValue;
 import classy.compiler.parsing.Assignment;
 import classy.compiler.parsing.BinOp;
 import classy.compiler.parsing.Block;
 import classy.compiler.parsing.Expression;
 import classy.compiler.parsing.If;
 import classy.compiler.parsing.Literal;
+import classy.compiler.parsing.NameBinding;
 import classy.compiler.parsing.Operation;
 import classy.compiler.parsing.Parameter;
 import classy.compiler.parsing.Reference;
@@ -34,10 +35,15 @@ public class Checker {
 		// We need to check variable references and reuse:
 		//  There cannot be two variables with the same name in the same scope.
 		//  If there is only one usage of a variable, it can be replaced with the value.
+		// We also need to type check the entire program
 		
 		List<Frame> environment = new ArrayList<>();
 		environment.add(new Frame(null));
 		check(program, environment);
+		
+		System.out.println("Checked:");
+		System.out.println(program.pretty(0));
+		System.out.println();
 		
 		if (optimize) {
 			Optimizer opt = new Optimizer();
@@ -109,7 +115,8 @@ public class Checker {
 			check((Parameter)e, env);
 		else if (e instanceof Reference)
 			check((Reference)e, env);
-		// Literals are not checked, since they cannot be wrong
+		//else if (e instanceof Literal)
+		//	return Type.number;
 		else if (!(e instanceof Literal))
 			throw new CheckException("Unchecked expression: " + e);
 	}
@@ -129,13 +136,18 @@ public class Checker {
 					name, " found in the same scope! First instance: ", firstInstance,
 					" and second instance: ", asgn);
 		}
+		Variable var = new Variable(name, asgn.getValue(), asgn);
 		
 		// If the parameter list is null, then this is simply a variable. Otherwise, this is
 		// a function definition. 
-		// Function definitions are special since the value can have references to itself.
-		// Also, it needs to add the parameters in a scope that contains only the value
-		if (asgn.getParamList() != null) {
-			Variable var = new Variable(name, asgn.getValue(), asgn);
+		if (asgn.getParamList() == null) {
+			check(asgn.getValue(), env);
+			variables.add(var);
+			curScope.allocate(name, var);
+		}else {
+			// Function definitions are special since the value can have references to itself.
+			// Also, it needs to add the parameters in a scope that contains only the value.
+			
 			// add this function's name to the environment to make recursive calls possible
 			curScope.allocate(name, var);
 			// Then create a new function scope where the parameters will reside
@@ -149,7 +161,7 @@ public class Checker {
 				// Check the parameter (needed if it has a default value)
 				check(parameter, env);
 				String param = parameter.getName();
-				Variable paramVar = new Variable(param, null, null);
+				Variable paramVar = new Variable(param, null, parameter);
 				variables.add(paramVar);
 				fxScope.allocate(param, paramVar);
 			}
@@ -158,43 +170,33 @@ public class Checker {
 			check(asgn.getValue(), env);
 			env.remove(env.size() - 1); // Remove the scope of the function call
 			
-			// Checking will find any externalities of our function, which are variables
+			// Checking must find any externalities of our function, which are variables
 			//  that are correctly referenced, but not defined in the scope of the function.
 			//  In translation, the function will not have the same scope, so these need to
 			//  be made explicit. We include them as additional function parameters.
-			// We condense the list of references to externalities to a set of assignments
-			Set<Assignment> externalities = new HashSet<>();
+			// We condense the list of externality references to a set of assignments
+			Set<Variable> externalities = new HashSet<>();
 			class ParamVariable extends Variable {
 				protected Variable oldVar;
-				public ParamVariable(String name, Assignment source, Variable oldVar) {
+				public ParamVariable(String name, NameBinding source, Variable oldVar) {
 					super(name, null, source);
 					this.oldVar = oldVar;
 				}
 			}
-			Map<Assignment, ParamVariable> replacements = new HashMap<>();
+			Map<Variable, ParamVariable> replacements = new HashMap<>();
 			for (Reference ext: fxScope.externalities) {
 				// Recursive functions will trigger an externality on themselves. This is 
 				//  to be ignored, since we don't handle recursion as an added parameter.
-				if (ext.getLinkedTo() == asgn)
+				if (ext.getLinkedTo() == var)
 					continue;
 				boolean added = externalities.add(ext.getLinkedTo());
-				if (added) {
+				if (added) { // If added is true, then this variable was new to the set
 					// Then we must create a replacement for all function replacements
-					Assignment old = ext.getLinkedTo();
-					// Find the old variable to replace its references
-					Variable oldVar = null;
-					for (Variable checkVar: variables) {
-						if (checkVar.source == old) {
-							oldVar = checkVar;
-							break;
-						}
-					}
+					Variable oldVar = ext.getLinkedTo();
 					// Instead of using the externality directly, all references in
 					// the function need to use the new variable we are creating.
 					// Therefore, we have to retroactively apply it
-					// TODO: The reason why we are not adding a source is because that is how
-					//  we keep track of a single variable for variable mangling in translation.
-					replacements.put(old, new ParamVariable(ext.getVarName(), null, oldVar));
+					replacements.put(oldVar, new ParamVariable(ext.getVarName(), null, oldVar));
 				}
 				// The replacement should already have been mapped
 				ParamVariable extern = replacements.get(ext.getLinkedTo());
@@ -212,18 +214,15 @@ public class Checker {
 				//  to be called, then so is the externality.
 				Reference ref = new Reference(null);
 				Value val = new Value(null, ref);
-				// It is useless to set the reference source, since we only need
-				//  that in checking, a step that is redundant for a synthetic
-				//  reference. Instead, we must add the reference to the externality
-				//  directly.
-				pVar.oldVar.addRef(ref);
-				asgn.getParamList().add(new Parameter(pVar.getName(), val));
+				ref.setLinkedTo(pVar); // tell the reference what it points to (in case it is cloned)
+				// For optimization purposes, we do not want to add the default value reference to
+				//  the new variable's references. Every time the default value is used, the reference
+				//  will be cloned and added as a reference. However, if the default value is never
+				//  used, then the variable it references can safely be deleted
+				Parameter newP = new Parameter(pVar.getName(), val);
+				newP.setSourced(pVar);
+				asgn.getParamList().add(newP);
 			}
-		}else {
-			check(asgn.getValue(), env);
-			Variable var = new Variable(name, asgn.getValue(), asgn);
-			variables.add(var);
-			curScope.allocate(name, var);
 		}
 	}
 	
@@ -257,12 +256,14 @@ public class Checker {
 		}
 		
 		referenced.addRef(ref);
-		ref.setLinkedTo(referenced.getSource());
+		ref.setLinkedTo(referenced);
 		
-		// We will know if there are necessary arguments based on whether the assignment was a function
+		// We know if there are necessary arguments based on whether the binding was a function assignment
 		if (referenced.getSource() != null) {
-			Assignment source = referenced.getSource();
-			if (source.getParamList() != null) {
+			NameBinding binding = referenced.getSource();
+			if (binding instanceof Assignment && ((Assignment)binding).getParamList() != null) {
+				Assignment source = (Assignment)binding;
+				
 				// We need to connect the next token to the ref
 				List<Subexpression> subexp = ref.getParent().getSubexpressions();
 				int refAt = subexp.indexOf(ref);
@@ -271,11 +272,11 @@ public class Checker {
 				// Check all arguments to this reference
 				// We don't want to check an argument list by itself, since it cannot occur by
 				//  itself, and an error should be thrown if it is.
-				if (!(subexp.get(refAt + 1) instanceof ArgumentList))
+				if (!(subexp.get(refAt + 1) instanceof Tuple))
 					check(subexp.get(refAt + 1), env);
 				else {
 					// Check all the arguments in the list
-					ArgumentList ls = (ArgumentList)subexp.get(refAt + 1);
+					Tuple ls = (Tuple)subexp.get(refAt + 1);
 					for (Value arg: ls.getArgs())
 						check(arg, env);
 				}
@@ -283,23 +284,23 @@ public class Checker {
 				// We want to get the argument list for this reference. If the argument
 				//  is not an argument list (which is common for single-argument functions),
 				//  then we want to wrap it as an argument list for uniformity.
-				ArgumentList ls = null;
+				Tuple ls = null;
 				if (argLs instanceof Value) {
 					Value foundVal = (Value)argLs;
 					// There should only be one subexpression in the value at this point,
 					//  since it has necessarily been checked (and checking requires that
 					//  there is only 1 resulting subexpression).
 					// Thus, we extricate the subexpression to make the argument list.
-					// TODO it turns out that an argument list does *not* result in a value,
+					// It turns out that an argument list does *not* result in a value,
 					//  so in checking, we should validate that the value is not just an
 					//  argument list
 					if (foundVal.getSubexpressions().size() == 1)
 						argLs = foundVal.getSubexpressions().get(0);
 				}
-				if (argLs instanceof ArgumentList)
-					ls = (ArgumentList)argLs;
+				if (argLs instanceof Tuple)
+					ls = (Tuple)argLs;
 				else {
-					ls = new ArgumentList(argLs.getParent());
+					ls = new Tuple(argLs.getParent());
 					ls.addArg(new LabeledValue(new Value(null, argLs)));
 				}
 				
@@ -353,9 +354,17 @@ public class Checker {
 							k++;
 						// or if the parameter at t has the wrong argument (but has a default value)
 						// or if the parameter at t is implicit (and thus may receive no argument).
-						else if (paramList.get(k).getImplicit())
-							sortedArgs[k] = new LabeledValue(paramList.get(k).getDefaultVal());
-						else if (k >= sortedArgs.length)
+						else if (paramList.get(k).getImplicit()) {
+							// We need to copy from the default value to the argument list
+							// Unfortunately, we need to perform a deep clone of the default value.
+							//  If we merely copy the reference, then multiple uses of a reference
+							//  will not be correctly realized for optimization.
+							Value cloned = paramList.get(k).getDefaultVal().clone();
+							// We will have references add themselves appropriately on a clone, and
+							//  thus we don't need to check again.
+							sortedArgs[k] = new LabeledValue(cloned);
+							
+						}else if (k >= sortedArgs.length)
 							throw new CheckException("Mismatch number of arguments in function call ",
 									ref, "! ", (ls.getArgs().size() - j)+"", " too many arguments given.");
 						else {
@@ -384,7 +393,7 @@ public class Checker {
 								ref, "! Call missing arguments for ", missList.toString(), ".");
 					}
 					// If there was a default value given, use it
-					sortedArgs[k] = new LabeledValue(p.getDefaultVal());
+					sortedArgs[k] = new LabeledValue(p.getDefaultVal().clone());
 				}
 				// Finally, we update the argument list to match our new sorted list
 				ls.getArgs().clear();

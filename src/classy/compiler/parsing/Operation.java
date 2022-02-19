@@ -97,5 +97,18 @@ public abstract class Operation extends Subexpression {
 	}
 	
 	protected abstract String prettyOperation();
+	
+	public Operation clone() {
+		Operation outer = this;
+		Operation cloned = new Operation(parent, this.operation) {
+			@Override
+			protected String prettyOperation() {
+				return outer.prettyOperation();
+			}
+		};
+		cloned.rhs = this.rhs.clone();
+		
+		return cloned;
+	}
 
 }

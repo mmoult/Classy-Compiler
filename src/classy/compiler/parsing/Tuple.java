@@ -5,10 +5,10 @@ import java.util.List;
 
 import classy.compiler.lexing.Token;
 
-public class ArgumentList extends Subexpression {
+public class Tuple extends Subexpression {
 	protected List<LabeledValue> args = new ArrayList<>();
 
-	public ArgumentList(Value parent) {
+	public Tuple(Value parent) {
 		super(parent);
 	}
 	
@@ -125,6 +125,12 @@ public class ArgumentList extends Subexpression {
 			return label;
 		}
 		
+		public LabeledValue clone() {
+			Value cloned = super.clone();
+			LabeledValue ret = new LabeledValue(cloned, label);
+			return ret;
+		}
+		
 		@Override
 		public String pretty(int indents) {
 			StringBuffer buf = new StringBuffer();
@@ -136,6 +142,14 @@ public class ArgumentList extends Subexpression {
 			return buf.toString();
 		}
 		
+	}
+
+	@Override
+	public Tuple clone() {
+		Tuple cloned = new Tuple(parent);
+		for (LabeledValue arg: args)
+			cloned.args.add(arg.clone());
+		return null;
 	}
 
 }

@@ -45,7 +45,7 @@ public class Value extends Subexpression {
 				// We want to find the end
 				int foundEnd;
 				if (it.match(Token.Type.CLOSE_PAREN, end)) {
-					found = new ArgumentList(this);
+					found = new Tuple(this);
 					foundEnd = it.index;
 				}else {
 					foundEnd = it.find(Token.Type.CLOSE_PAREN, end);
@@ -54,7 +54,7 @@ public class Value extends Subexpression {
 					//  we have a void argument list
 					
 					if (it.find(Token.Type.COMMA, foundEnd) != -1)
-						found = new ArgumentList(this);
+						found = new Tuple(this);
 					else {
 						// Even if there are no commas, this may still be an argument list.
 						// We can know if a default value is set. Since there are no commas,
@@ -65,7 +65,7 @@ public class Value extends Subexpression {
 							int startAt = it.index;
 							it.next(foundEnd);
 							if (it.match(Token.Type.ASSIGN, foundEnd + 1))
-								found = new ArgumentList(this);
+								found = new Tuple(this);
 							it.index = startAt;
 						}
 						if (found == null)
@@ -83,11 +83,11 @@ public class Value extends Subexpression {
 			}else if (it.match(Token.Type.COMMA, end)) {
 				// We have an argument list here!
 				// Put everything found thus far into a value as the first param to the list
-				ArgumentList ls = new ArgumentList(this);
+				Tuple ls = new Tuple(this);
 				Subexpression[] subs = {};
 				Value val = new Value(null, subexpressions.toArray(subs));
 				subexpressions.clear();
-				ls.addArg(new ArgumentList.LabeledValue(val));
+				ls.addArg(new Tuple.LabeledValue(val));
 				it.next(end);
 				ls.parse(it, end);
 				subexpressions.add(ls);
@@ -161,7 +161,7 @@ public class Value extends Subexpression {
 		case GREATER_EQUAL:
 			return new BinOp.GreaterEqual(this);
 		case VOID:
-			return new ArgumentList(this);
+			return new Tuple(this);
 		case AMPERSAND:
 			return new BinOp.And(this);
 		case BAR:
@@ -173,6 +173,14 @@ public class Value extends Subexpression {
 	
 	public List<Subexpression> getSubexpressions() {
 		return subexpressions;
+	}
+	
+	public Value clone() {
+		Value cloned = new Value();
+		cloned.parent = parent;
+		for (Subexpression sub: subexpressions)
+			cloned.subexpressions.add(sub.clone());
+		return cloned;
 	}
 	
 	@Override

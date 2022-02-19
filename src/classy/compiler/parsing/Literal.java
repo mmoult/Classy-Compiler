@@ -31,4 +31,10 @@ public class Literal extends Subexpression {
 	public String pretty(int indents) {
 		return token.getValue();
 	}
+	
+	public Literal clone() {
+		Literal cloned = new Literal(parent);
+		cloned.token = token;
+		return cloned;
+	}
 }

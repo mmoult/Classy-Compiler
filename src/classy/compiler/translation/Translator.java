@@ -11,7 +11,7 @@ import java.util.Scanner;
 import java.util.Set;
 
 import classy.compiler.analyzing.Variable;
-import classy.compiler.parsing.ArgumentList;
+import classy.compiler.parsing.Tuple;
 import classy.compiler.parsing.Assignment;
 import classy.compiler.parsing.BinOp;
 import classy.compiler.parsing.Block;
@@ -28,7 +28,7 @@ public class Translator {
 	private int varNum = 1;
 	private int inFunction = 0;
 	protected LinePlacer lines;
-	private Map<Expression, String> varMangle;
+	private Map<Variable, String> varMangle;
 
 	
 	public Translator(Value program, List<Variable> vars) {
@@ -42,7 +42,7 @@ public class Translator {
 		for (Variable var: vars) {
 			if (var.getSource() != null) {
 				String name = var.getName();
-				String useName = name;
+				String useName = cleanIdentifier(name);
 				if (namesUsed.contains(name)) {
 					// There was a collision, so we try another
 					int cnt = 0;
@@ -53,12 +53,23 @@ public class Translator {
 				}
 				// Great! we found a name we can use.
 				namesUsed.add(useName);
-				varMangle.put(var.getSource(), useName);
+				varMangle.put(var, useName);
 			}
 		}
 		
 		// Now begin the translation process
 		translate(program);
+	}
+	
+	protected String cleanIdentifier(String dirty) {
+		// remove all spaces or non-numeric or alphabetic characters
+		StringBuffer clean = new StringBuffer();
+		for (int i=0; i<dirty.length(); i++) {
+			char c = dirty.charAt(i);
+			if ((c >= '0' && c <= '9') || c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))
+				clean.append(c);
+		}
+		return clean.toString();
 	}
 	
 	public void translate(Value program) {		
@@ -132,7 +143,7 @@ public class Translator {
 		}else if (e instanceof Assignment) {
 			Assignment asgn = (Assignment)e;
 			// We want to find what we should save this variable name as
-			String name = varMangle.get(asgn);
+			String name = varMangle.get(asgn.getSourced()); //TODO HERE
 			
 			// First, we must find if this is a value assignment or a function assignment
 			if (asgn.getParamList() == null) {
@@ -153,7 +164,7 @@ public class Translator {
 				lineCmps[2] = "(";
 				int i = 3;
 				for (Parameter parameter: asgn.getParamList()) {
-					String param = parameter.getName();
+					String param = varMangle.get(parameter.getSourced());
 					if (i > 3)
 						lineCmps[i++] = ", i32 %";
 					else
@@ -181,11 +192,7 @@ public class Translator {
 		}else if (e instanceof Reference) {
 			// Reference needs to copy from the variable to the return address
 			Reference ref = (Reference)e;
-			String name; // the name used
-			if (varMangle.containsKey(ref.getLinkedTo()))
-				name = varMangle.get(ref.getLinkedTo());
-			else // function params will not be in mangle since they are local
-				name = ref.getVarName();
+			String name = varMangle.get(ref.getLinkedTo());
 			if (ref.getArgument() == null) {
 				// Regular reference
 				if (inFunction == 0) {
@@ -200,8 +207,8 @@ public class Translator {
 				// Function call
 				Value argument = ref.getArgument();
 				Value[] args;
-				if (argument.getSubexpressions().get(0) instanceof ArgumentList) {
-					ArgumentList ls = (ArgumentList)argument.getSubexpressions().get(0);
+				if (argument.getSubexpressions().get(0) instanceof Tuple) {
+					Tuple ls = (Tuple)argument.getSubexpressions().get(0);
 					args = ls.getArgs().toArray(new Value[] {});
 				}else
 					args = new Value[] {argument};
