@@ -178,8 +178,11 @@ public class Value extends Subexpression {
 	public Value clone() {
 		Value cloned = new Value();
 		cloned.parent = parent;
-		for (Subexpression sub: subexpressions)
-			cloned.subexpressions.add(sub.clone());
+		for (Subexpression sub: subexpressions) {
+			Subexpression sclone = sub.clone();
+			sclone.parent = cloned;
+			cloned.subexpressions.add(sclone);
+		}
 		return cloned;
 	}
 	

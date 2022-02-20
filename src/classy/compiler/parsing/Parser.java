@@ -56,7 +56,7 @@ public class Parser {
 			//  will remove the redundant variable.
 			if (found instanceof Assignment) {
 				Assignment assn = (Assignment)found;
-				if (!assn.getParamList().isEmpty()) {
+				if (assn.getParamList() != null && !assn.getParamList().isEmpty()) {
 					class OpenAssignment extends Assignment {
 						public OpenAssignment(Block parent, String name, Value value) {
 							super(parent);

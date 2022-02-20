@@ -40,21 +40,19 @@ public class Translator {
 		Set<String> namesUsed = new HashSet<>();
 		
 		for (Variable var: vars) {
-			if (var.getSource() != null) {
-				String name = var.getName();
-				String useName = cleanIdentifier(name);
-				if (namesUsed.contains(name)) {
-					// There was a collision, so we try another
-					int cnt = 0;
-					while (namesUsed.contains(name + cnt)) {
-						cnt++;
-					}
-					useName = name + cnt;
+			String name = var.getName();
+			String useName = cleanIdentifier(name);
+			if (namesUsed.contains(name)) {
+				// There was a collision, so we try another
+				int cnt = 0;
+				while (namesUsed.contains(name + cnt)) {
+					cnt++;
 				}
-				// Great! we found a name we can use.
-				namesUsed.add(useName);
-				varMangle.put(var, useName);
+				useName = name + cnt;
 			}
+			// Great! we found a name we can use.
+			namesUsed.add(useName);
+			varMangle.put(var, useName);
 		}
 		
 		// Now begin the translation process
@@ -143,7 +141,9 @@ public class Translator {
 		}else if (e instanceof Assignment) {
 			Assignment asgn = (Assignment)e;
 			// We want to find what we should save this variable name as
-			String name = varMangle.get(asgn.getSourced()); //TODO HERE
+			String name = varMangle.get(asgn.getSourced());
+			if (name == null)
+				throw new RuntimeException("Assignment encountered without a name in translation!");
 			
 			// First, we must find if this is a value assignment or a function assignment
 			if (asgn.getParamList() == null) {
@@ -193,6 +193,8 @@ public class Translator {
 			// Reference needs to copy from the variable to the return address
 			Reference ref = (Reference)e;
 			String name = varMangle.get(ref.getLinkedTo());
+			if (name == null)
+				throw new RuntimeException("Reference encountered without a name in translation!");
 			if (ref.getArgument() == null) {
 				// Regular reference
 				if (inFunction == 0) {

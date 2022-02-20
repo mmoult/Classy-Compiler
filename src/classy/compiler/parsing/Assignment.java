@@ -46,18 +46,21 @@ public class Assignment extends NameBinding {
 						it.tokens.get(start), "!");
 			while(true) {
 				int nextComma = it.find(Token.Type.COMMA, close);
-				int stop = (nextComma != -1? nextComma: close) + 1;
-				if (it.match(Token.Type.IDENTIFIER, stop)) {
+				int stop = (nextComma != -1? nextComma: close);
+				
+				boolean paramFound = false;
+				if (it.match(Token.Type.IDENTIFIER, stop + 1)) {
 					Parameter param = new Parameter();
-					param.parse(it, end);
+					param.parse(it, stop);
 					this.paramList.add(param);
-					// After the identifier, we must see either the end or a comma
-					if (it.match(Token.Type.COMMA, stop)) {
-						it.next(close);
-						// We are ready to parse another. We don't need to see another though,
-						//  comma ended lists are acceptable.
-						continue;
-					}
+					paramFound = true;
+				}
+				// After the identifier, we must see either the end or a comma
+				if (paramFound && it.match(Token.Type.COMMA, stop + 1)) {
+					it.next(close);
+					// We are ready to parse another. We don't need to see another though,
+					//  comma ended lists are acceptable.
+					continue;
 				}else if (it.index == close)
 					break; // successfully found the end
 				else

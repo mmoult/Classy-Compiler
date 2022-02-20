@@ -24,6 +24,9 @@ public class Reference extends Subexpression {
 	public String getVarName() {
 		return varName;
 	}
+	public void setVarName(String varName) {
+		this.varName = varName;
+	}
 	
 	@Override
 	public boolean isLink() {

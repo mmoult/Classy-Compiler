@@ -150,12 +150,10 @@ class IntegrationTest {
 	@Test
 	void paramDefaultValue() {
 		List<String> lines = List.of(
-			"let foo = 1",
-			"let bar = 2",
-			"let fx(baz = 3) = foo + bar + baz",
+			"let fx(baz = 3, foo = 2) = baz + foo",
 			"fx()"
 		);
-		expectFromProgram(lines, 6);
+		expectFromProgram(lines, 5);
 	}
 	
 	@Test

@@ -34,34 +34,36 @@ public class Optimizer {
 				
 				if (var.references.isEmpty())
 					removeList.add(var);
-				// If there is only one usage, and the variable is set (not a function param)
-				else if (var.references.size() == 1 && var.value != null) {
-					// Replace the reference with the value
-					// TODO: implement replacement of function values
-					if (((Assignment)var.source).getParamList() == null) {
+				// If there is only one usage, try to remove it
+				else if (var.references.size() == 1 && var.source != null) {
+					// Cannot replace parameters and cannot currently TODO replace functions
+					if (var.source instanceof Assignment &&
+							((Assignment)var.source).getParamList() == null) {
+						// Replace the reference with the value
 						Reference ref = var.references.get(0);
 						List<Subexpression> subList = ref.getParent().getSubexpressions();
 						int replaceAt = subList.indexOf(ref);
 						subList.remove(replaceAt);
 						subList.addAll(replaceAt, var.value.getSubexpressions());
+						
+						// get rid of the assignment for an unused variable
+						removeList.add(var);
 					}
-					
-					// get rid of the assignment for an unused variable
-					removeList.add(var);
 				}
 			}
 			for (Variable var: removeList) {
-				// We need to delete it at its source first
+				// Cannot remove parameters
 				if (var.source instanceof Parameter) {
-					System.out.println("Warning: Unused parameter \"" + var.name + "\".");
-				}else {
-					Block parent = ((Assignment)var.source).getParent();
-					parent.getBody().remove(var.source);
-					parent.reduce();
-					// then we can remove it from the variables list to complete the change
-					variables.remove(var);	
-					changesMade = true;
+					System.out.println("Warning: Unused parameter \"" + var.source + "\".");
+					continue;
 				}
+				// We need to delete it at its source first
+				Block parent = ((Assignment)var.source).getParent();
+				parent.getBody().remove(var.source);
+				parent.reduce();
+				// then we can remove it from the variables list to complete the change
+				variables.remove(var);	
+				changesMade = true;
 			}
 		} while(changesMade);
 		

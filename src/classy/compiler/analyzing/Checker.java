@@ -41,9 +41,11 @@ public class Checker {
 		environment.add(new Frame(null));
 		check(program, environment);
 		
+		/*
 		System.out.println("Checked:");
 		System.out.println(program.pretty(0));
 		System.out.println();
+		*/
 		
 		if (optimize) {
 			Optimizer opt = new Optimizer();
@@ -196,14 +198,17 @@ public class Checker {
 					// Instead of using the externality directly, all references in
 					// the function need to use the new variable we are creating.
 					// Therefore, we have to retroactively apply it
-					replacements.put(oldVar, new ParamVariable(ext.getVarName(), null, oldVar));
+					ParamVariable newVar = new ParamVariable("&"+ext.getVarName(), null, oldVar);
+					variables.add(newVar);
+					replacements.put(oldVar, newVar);
 				}
 				// The replacement should already have been mapped
 				ParamVariable extern = replacements.get(ext.getLinkedTo());
 				// replace the old link with the new link
 				extern.oldVar.getRef().remove(ext);
 				extern.addRef(ext);
-				variables.add(extern);
+				ext.setLinkedTo(extern);
+				ext.setVarName(extern.name);
 			}
 			// Then, for each of the actual externalities, we add a new parameter to this function
 			//  as a default value parameter
@@ -213,12 +218,14 @@ public class Checker {
 				//  parameter. The idea is that if this function is in scope
 				//  to be called, then so is the externality.
 				Reference ref = new Reference(null);
+				ref.setVarName(pVar.oldVar.name);
+				ref.setLinkedTo(pVar.oldVar); // tell the reference what it points to (in case it is cloned)
+				// For optimization reasons, we do not want to tell oldVar that the default
+				//  value is one of its references (though we connect them from reference).
+				// This is because whenever the default value is used, the reference is created. If it is
+				//  never used, then the variable referenced may be safely deleted.
 				Value val = new Value(null, ref);
-				ref.setLinkedTo(pVar); // tell the reference what it points to (in case it is cloned)
-				// For optimization purposes, we do not want to add the default value reference to
-				//  the new variable's references. Every time the default value is used, the reference
-				//  will be cloned and added as a reference. However, if the default value is never
-				//  used, then the variable it references can safely be deleted
+				
 				Parameter newP = new Parameter(pVar.getName(), val);
 				newP.setSourced(pVar);
 				asgn.getParamList().add(newP);
