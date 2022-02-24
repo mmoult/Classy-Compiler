@@ -18,6 +18,11 @@ import classy.compiler.parsing.Value;
 
 public class Optimizer {
 	
+	public Optimizer() {}
+	public Optimizer(Checker check, Value program) {
+		optimize(check.variables, program);
+	}
+	
 	public void optimize(List<Variable> variables, Value program) {
 		// Attempt to replace any unneeded variables with their values
 		// Optimization is an interesting process since different parts may be dependent on others.

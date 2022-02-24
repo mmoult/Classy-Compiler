@@ -77,7 +77,7 @@ public class OptimizerTest {
 		Value program = makeProgram(tokens);
 		// Unfortunately we have to check this program to enforce proper groupings
 		// This is more roundabout, but it will do the same thing in the end
-		new Checker(program, true);
+		opt = new Optimizer(new Checker(program), program);
 		
 		// We should get a literal 4 out after optimizations
 		List<Subexpression> subs = program.getSubexpressions();

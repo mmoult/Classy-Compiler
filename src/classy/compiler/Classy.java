@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Scanner;
 
 import classy.compiler.analyzing.Checker;
+import classy.compiler.analyzing.Optimizer;
 import classy.compiler.analyzing.Variable;
 import classy.compiler.lexing.Lexer;
 import classy.compiler.lexing.Token;
@@ -160,11 +161,20 @@ public class Classy {
 		// Just creating the checker object will run the checker and
 		// try to catch any type errors that may be present.
 		boolean optimize = !flags.containsKey(NO_OPT);
-		Checker check = new Checker(program, optimize);
-		if (verbose && optimize) {
-			System.out.println("Optimized:");
+		Checker check = new Checker(program);
+		if (verbose) {
+			System.out.println("Typed to: " + check.result);
 			System.out.println(program.pretty(0));
 			System.out.println();
+		}
+		
+		if (optimize) {
+			new Optimizer(check, program);
+			if (verbose) {
+				System.out.println("Optimized:");
+				System.out.println(program.pretty(0));
+				System.out.println();
+			}
 		}
 		List<Variable> vars = check.getVariables();
 		

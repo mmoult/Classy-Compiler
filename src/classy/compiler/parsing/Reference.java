@@ -1,5 +1,6 @@
 package classy.compiler.parsing;
 
+import classy.compiler.analyzing.Type;
 import classy.compiler.analyzing.Variable;
 import classy.compiler.lexing.Token;
 
@@ -7,6 +8,7 @@ public class Reference extends Subexpression {
 	protected String varName;
 	protected Variable linkedTo;
 	protected Value arguments;
+	protected Type type;
 	
 	public Reference(Value parent) {
 		super(parent);
@@ -51,6 +53,13 @@ public class Reference extends Subexpression {
 		return this.arguments;
 	}
 	
+	public void setType(Type type) {
+		this.type = type;
+	}
+	public Type getType() {
+		return type;
+	}
+	
 	@Override
 	public String pretty(int indents) {
 		if (arguments == null)
@@ -70,6 +79,7 @@ public class Reference extends Subexpression {
 		cloned.linkedTo = linkedTo; // referencing the same variable, so no cloning here
 		if (linkedTo != null)
 			linkedTo.addRef(cloned);
+		cloned.type = type;
 		return cloned;
 	}
 
