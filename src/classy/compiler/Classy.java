@@ -178,7 +178,7 @@ public class Classy {
 		}
 		List<Variable> vars = check.getVariables();
 		
-		Translator translate = new Translator(program, vars);
+		Translator translate = new Translator(program, vars, check.result);
 		List<String> outLines = translate.getOutLines();
 		// Output the lines to fileName.ll
 		FileWriter fw = null;

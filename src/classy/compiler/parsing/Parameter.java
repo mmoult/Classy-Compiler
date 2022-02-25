@@ -3,6 +3,7 @@ package classy.compiler.parsing;
 import classy.compiler.lexing.Token;
 
 public class Parameter extends NameBinding {
+	protected Token start;
 	protected String name;
 	protected Value defaultVal = null;
 	protected boolean implicit = false;
@@ -20,6 +21,7 @@ public class Parameter extends NameBinding {
 		if (!it.match(Token.Type.IDENTIFIER, end))
 			throw new ParseException("Identifier should be the first token in a parameter! However, ",
 					it.token(), " was found instead.");
+		start = it.token();
 		name = it.token().getValue();
 		it.next(end);
 		try {
@@ -56,6 +58,15 @@ public class Parameter extends NameBinding {
 			buf.append(" = ");
 			buf.append(defaultVal.pretty(indents));
 		}
+		return buf.toString();
+	}
+	
+	@Override
+	public String toString() {
+		StringBuffer buf = new StringBuffer("parameter \"");
+		buf.append(name);
+		buf.append("\" beginning with ");
+		buf.append(start);
 		return buf.toString();
 	}
 

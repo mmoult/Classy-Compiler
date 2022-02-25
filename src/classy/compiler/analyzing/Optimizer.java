@@ -59,7 +59,7 @@ public class Optimizer {
 			for (Variable var: removeList) {
 				// Cannot remove parameters
 				if (var.source instanceof Parameter) {
-					System.out.println("Warning: Unused parameter \"" + var.source + "\".");
+					System.out.println("Warning: Unused " + var.source + ".");
 					continue;
 				}
 				// We need to delete it at its source first

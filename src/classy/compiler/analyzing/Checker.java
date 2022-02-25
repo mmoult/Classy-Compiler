@@ -161,12 +161,31 @@ public class Checker {
 				variables.add(paramVar);
 				fxScope.allocate(param, paramVar);
 			}
+			// to replace the inputs to the function type (with any defaults)
+			Type[] inputsReplacement = new Type[inputTypes.size()];
+			int i = 0;
+			for (; i < inputTypes.size(); ++i)
+				inputsReplacement[i] = inputTypes.get(i);
+			// We may not have the type of the function yet, but we can assign the type
+			//  of the parameters. Set the type of this variable in case a recursive call
+			//  is made by the value
+			// The return is currently undetermined, but we give a link to this in case
+			//  the value will kindly set it for us
+			var.setType(new Type(new UndeterminedReturn(var), inputsReplacement));
+			
 			env.add(fxScope);
 			// Now that the function scope is made, use it for the value
-			// Var needs to have a defined type for function calls.
-			// TODO: tricky recursive problem. 
 			type = check(asgn.getValue(), env);
 			env.remove(env.size() - 1); // Remove the scope of the function call
+			// Now we can set the type of the return (assuming it has not been set already)
+			if (var.getType().output instanceof UndeterminedReturn) {
+				var.getType().output = type;
+			}else {
+				// If it has already been set, we need to verify that what it was set to is consistent
+				if (!type.isa(var.getType().output))
+					throw new CheckException("Type error for assignment of function ", asgn,
+							"! Cannot return both ", type, " and ", var.getType().output, ".");
+			}
 			
 			// Checking must find any externalities of our function, which are variables
 			//  that are correctly referenced, but not defined in the scope of the function.
@@ -209,11 +228,6 @@ public class Checker {
 			}
 			// Then, for each of the actual externalities, we add a new parameter to this function
 			//  as a default value parameter
-			// to replace the inputs to the function type (with any defaults)
-			Type[] inputsReplacement = new Type[inputTypes.size() + replacements.values().size()];
-			int i = 0;
-			for (; i < inputTypes.size(); ++i)
-				inputsReplacement[i] = inputTypes.get(i);
 			// As we go through the replacement variables, we add the remaining needed entries.
 			for (ParamVariable pVar: replacements.values()) {
 				// We need to create a new reference to the old assignment.
@@ -233,12 +247,7 @@ public class Checker {
 				pVar.source = newP;
 				newP.setSourced(pVar);
 				asgn.getParamList().add(newP);
-				inputsReplacement[i++] = pVar.type; // add the type to this
 			}
-			// Replace the type we got from the value with the function's proper type.
-			// The value's type is the output type of the function.
-			type = new Type(type, inputsReplacement);
-			var.setType(type);
 		}
 		return type;
 	}
@@ -285,20 +294,33 @@ public class Checker {
 		 * function, then this must be a function call. This is not necessarily a good assumption.
 		 */
 		if (referenced.getType().isFunction()) {
-			// get the type based on the function and argument list
-			Assignment source = (Assignment)referenced.getSource();
+			// Just because this reference is a function type does *not* mean that it is being
+			//  used as a function call. We need to take a look at the next subexpression to see
+			//  the context of how this reference is being used.
 			
 			// We need to connect the next token to the ref
 			List<Subexpression> subexp = ref.getParent().getSubexpressions();
 			int refAt = subexp.indexOf(ref);
-			if (refAt == -1 || refAt + 1 >= subexp.size())
+			if (refAt == -1) 
 				throw new CheckException("Missing argument(s) for function call ", ref, "!");
+			if (refAt + 1 >= subexp.size()) {
+				ref.setType(referenced.getType());
+				return referenced.getType(); // not using a call since there are no arguments.
+			}
+			// If the next subexpression is not argument-allowable, then we know this isn't a call
+			
 			// Check all arguments to this reference
-			// We don't want to check an argument list by itself, since it cannot occur by
+			// We don't want to check a tuple by itself, since it cannot occur by
 			//  itself, and an error should be thrown if it is.
-			if (!(subexp.get(refAt + 1) instanceof Tuple))
+			if (!(subexp.get(refAt + 1) instanceof Tuple)) {
+				Subexpression next = subexp.get(refAt + 1);
+				if (next instanceof BinOp) // operations are not possible on function types 
+					throw new CheckException("Operation ", next,
+							" may not be called on function-typed reference ", ref, "!");
+				
+				// If all the checks did not flag this, then it must be a call.
 				check(subexp.get(refAt + 1), env);
-			else {
+			}else {
 				// Check all the arguments in the list
 				Tuple ls = (Tuple)subexp.get(refAt + 1);
 				for (Value arg: ls.getArgs())
@@ -335,6 +357,7 @@ public class Checker {
 			// We want to check that all the arguments given match with parameters of
 			//  the function, and that all necessary parameters of the function have
 			//  been satisfied by corresponding arguments.
+			Assignment source = (Assignment)referenced.getSource();
 			List<Parameter> paramList = source.getParamList();
 			// Furthermore, in translation to LLVM bytecode, we need all arguments to
 			//  be in the order of the parameters. Therefore, we can easily order
@@ -454,22 +477,31 @@ public class Checker {
 		check(ife.getCondition(), env);
 		Type thenType = check(ife.getThen(), env);
 		Type elseType = check(ife.getElse(), env);
-		if (!thenType.equals(elseType))
-			throw new CheckException("Types of then and else must match in conditional ", ife, "! Type ",
-					thenType, " and type ", elseType, " found instead.");
-		return thenType;
+		// The less specific of the two is the type returned
+		Type less = expectType(thenType, elseType);
+		if (less != null)
+			return less;
+		less = expectType(elseType, thenType);
+		if (less != null)
+			return less;
+		
+		throw new CheckException("Types of then and else must match in conditional ", ife, "! Type ",
+				thenType, " and type ", elseType, " found instead.");
 	}
 	
 	protected Type check(Operation op, List<Frame> env) {
 		Type rhsType = check(op.getRHS(), env);
-		if (!rhsType.equals(Type.number))
+		rhsType = expectType(Type.number, rhsType);
+		if (rhsType == null)
 			throw new CheckException("The type of the rhs on operation ", op, " must be a number! ",
 					rhsType, " found instead.");
 		if (op instanceof BinOp) {
 			Type lhsType = check(((BinOp)op).getLHS(), env);
-			if (!rhsType.equals(lhsType)) // types must match in an operation
-				throw new CheckException("Types of lhs and rhs must match in operation ", op, "! Type ",
-						lhsType, " and type ", rhsType, " found instead.");
+			lhsType = expectType(Type.number, lhsType);
+			if (lhsType == null)
+				throw new CheckException("The type of the lhs on operation ", op, " must be a number! ",
+						lhsType, " found instead.");
+			rhsType = rhsType.intersect(lhsType);
 		}
 		return rhsType;
 	}
@@ -477,8 +509,19 @@ public class Checker {
 	protected Type check(Parameter param, List<Frame> env) {
 		if (param.getDefaultVal() != null)
 			return check(param.getDefaultVal(), env);
-		// Otherwise we are going to return Any
+		// Otherwise we are going to return undetermined
 		return Type.number; // TODO: for now we are returning Num, since that is all we have
+	}
+	
+	protected Type expectType(Type expected, Type got) {
+		if (got.isa(expected))
+			return expected;
+		if (got instanceof UndeterminedReturn) {
+			Variable var =((UndeterminedReturn)got).from;
+			var.getType().output = expected; // determine the output
+			return expected;
+		}
+		return null;
 	}
 	
 }

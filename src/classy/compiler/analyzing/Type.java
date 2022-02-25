@@ -1,12 +1,13 @@
 package classy.compiler.analyzing;
 
+import java.util.HashSet;
+import java.util.Set;
+
 public class Type {
 	// Default available types
 	public static Type any = new Type();
-	static { // give any the parent of any. 
-		any.parents = new Type[] {any}; 
-	}
 	public static Type number = new Type("Num");
+	public static Type bool = new Type("Bool", number);
 	
 	// Nominal type
 	protected String name = null;
@@ -17,6 +18,7 @@ public class Type {
 	
 	private Type() {
 		// for creating any. All other types get a default parent in construction
+		name = "Any";
 	}
 	public Type(String name) {
 		this.name = name;
@@ -32,13 +34,87 @@ public class Type {
 		this.inputs = inputs;
 	}
 	
+	/**
+	 * Returns whether this type is a subclass or descendant of the specified parent type.
+	 * Internally uses {@link #isa(Type, Set)} to avoid redundant checks.
+	 * @param parent the other type that this may be a descendant of
+	 * @return whether this type is indeed a descendant of the given parent
+	 */
 	public boolean isa(Type parent) {
+		Set<Type> checked = new HashSet<>();
+		return isa(parent, checked);
+	}
+	/**
+	 * The recursive call of {@link #isa(Type)}. Uses a set of checked types to avoid
+	 * double checking the same inheritance trees.
+	 * @param parent the type to check if this is a descendant of
+	 * @param checked the set of types that have already been checked
+	 * @return whether this type is indeed a desendant of the given parent
+	 */
+	protected boolean isa(Type parent, Set<Type> checked) {
+		if (this.equals(parent)) // if they are of same type
+			return true;
+		if (checked.contains(this))
+			return false; // we already checked this and all supers
 		
+		checked.add(this);
+		if (parents == null)
+			return false;
+		for (Type myParent: parents) {
+			if (myParent.isa(parent, checked))
+				return true;
+		}
 		return false;
 	}
 	
+	/**
+	 * Finds how the two types match. This may be a subclass of other or reverse.
+	 * Alternatively, there could be a common ancestor
+	 * @param other the other type
+	 * @return the intersection of the two types, null if none
+	 */
+	protected Type intersect(Type other) {
+		Set<Type> ones = new HashSet<>();
+		Set<Type> twos = new HashSet<>();
+		
+		// We go through and try to find any intersection between ones, which
+		//  is all the ancestors of t1, and twos, all the ancestors of t2
+		// t1 goes first
+		ones.add(this);
+		if (ones.contains(other))
+			return other;
+		twos.add(other);
+		
+		boolean changed;
+		Set<Type> temp = new HashSet<>();
+		do {
+			changed = false;
+			for (Type one: ones) {
+				for (Type p1: one.parents) {
+					if (twos.contains(p1))
+						return p1;
+					changed &= temp.add(p1);
+				}
+			}
+			ones.addAll(temp);
+			temp.clear();
+			
+			for (Type two: twos) {
+				for (Type p2: two.parents) {
+					if (ones.contains(p2))
+						return p2;
+					changed &= temp.add(p2);
+				}
+			}
+			twos.addAll(temp);
+			temp.clear();
+		}while (changed);
+		
+		return null;
+	}
+	
 	public boolean isFunction() {
-		return output != null;
+		return name == null;
 	}
 	
 	public boolean equals(Object other) {

@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Scanner;
 import java.util.Set;
 
+import classy.compiler.analyzing.Type;
 import classy.compiler.analyzing.Variable;
 import classy.compiler.parsing.Tuple;
 import classy.compiler.parsing.Assignment;
@@ -31,7 +32,7 @@ public class Translator {
 	private Map<Variable, String> varMangle;
 
 	
-	public Translator(Value program, List<Variable> vars) {
+	public Translator(Value program, List<Variable> vars, Type result) {
 		// We are going to want to map out all variables and to what new name they will receive.
 		//  We don't want any name conflicts (even if they are shadowed) so we will mangle the
 		//  names to make some new name.
@@ -56,7 +57,7 @@ public class Translator {
 		}
 		
 		// Now begin the translation process
-		translate(program);
+		translate(program, result);
 	}
 	
 	protected String cleanIdentifier(String dirty) {
@@ -70,7 +71,7 @@ public class Translator {
 		return clean.toString();
 	}
 	
-	public void translate(Value program) {		
+	public void translate(Value program, Type result) {		
 		// insert the printi.ll file, which is needed to print the result of main
 		Scanner scan = null;
 		try {
@@ -92,7 +93,10 @@ public class Translator {
 			}
 			//
 			int ret = load(""+retAt);
-			lines.addLine("call void @printi(i32 %", Integer.toString(ret), ")");
+			// If the result type is a number, then print it out
+			if (result.isa(Type.number))
+				lines.addLine("call void @printi(i32 %", Integer.toString(ret), ")");
+			// TODO: We want to have some print for other types too
 			lines.addLine("ret i32 0");
 			lines.deltaIndent(-1);
 			lines.addLine("}");
