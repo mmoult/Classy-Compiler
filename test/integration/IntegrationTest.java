@@ -169,6 +169,15 @@ class IntegrationTest {
 		expectFromProgram(lines, 3*4);
 	}
 	
+	@Test
+	void typeAnnotatedFx() {
+		List<String> lines = List.of(
+			"let subFive(value: Num): Num = value - 5",
+			"subFive 8"
+		);
+		expectFromProgram(lines, 3);
+	}
+	
 	protected ProcessResult runProcess(List<String> cmd) {
 		ProcessBuilder processBuilder = new ProcessBuilder(cmd);
 		processBuilder.redirectErrorStream(true);

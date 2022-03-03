@@ -1,5 +1,6 @@
 package classy.compiler.parsing;
 
+import classy.compiler.analyzing.Type;
 import classy.compiler.lexing.Token;
 
 public class Parameter extends NameBinding {
@@ -25,6 +26,16 @@ public class Parameter extends NameBinding {
 		name = it.token().getValue();
 		it.next(end);
 		try {
+			// We could see a type annotation or a default value
+			if (it.match(Token.Type.COLON, end)) {
+				it.next(end);
+				if (it.match(Token.Type.IDENTIFIER, end))
+					annotation = new Type.Stub(it.token().getValue());
+				else
+					throw new ParseException("Type name must be given after ':' in parameter declaration beginning with ",
+							start, "!");
+				it.next(end);
+			} // We can still see a default value even if we saw an annotation
 			if (it.match(Token.Type.ASSIGN, end)) {
 				// We are going to set a default value for this parameter
 				it.next(end);

@@ -29,6 +29,7 @@ public class Token {
 		CLOSE_PAREN,
 		SEMICOLON,
 		VOID,
+		COLON,
 		// operations
 		PLUS,
 		MINUS,

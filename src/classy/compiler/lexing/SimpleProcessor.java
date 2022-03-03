@@ -43,7 +43,9 @@ public class SimpleProcessor extends Processor {
 				i++;
 			}else
 				found = Token.Type.ASSIGN;
-		}else if (c == '+')
+		}else if (c == ':')
+			found = Token.Type.COLON;
+		else if (c == '+')
 			found = Token.Type.PLUS;
 		else if (c == '-')
 			found = Token.Type.MINUS;

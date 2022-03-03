@@ -3,6 +3,7 @@ package classy.compiler.parsing;
 import java.util.ArrayList;
 import java.util.List;
 
+import classy.compiler.analyzing.Type;
 import classy.compiler.lexing.Token;
 
 public class Assignment extends NameBinding {
@@ -67,6 +68,16 @@ public class Assignment extends NameBinding {
 					throw new ParseException("Unexpected token \"", it.token(),
 							"\" found in parameter list beginning with ", it.tokens.get(start), "!");
 			}
+			it.next(end);
+		}
+		
+		if (it.match(Token.Type.COLON, end)) { // type annotation for the variable
+			it.next(end);
+			if (it.match(Token.Type.IDENTIFIER, end))
+				annotation = new Type.Stub(it.token().getValue());
+			else
+				throw new ParseException("Type name must be given after ':' in variable declaration beginning with ",
+						it.tokens.get(assignmentStart), "!");
 			it.next(end);
 		}
 		

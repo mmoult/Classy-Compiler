@@ -26,6 +26,7 @@ import classy.compiler.parsing.Value;
 public class Checker {
 	protected List<Variable> variables = new ArrayList<>();
 	protected Set<Reference> checkedRef = new HashSet<>();
+	protected Map<String, Type> types = new HashMap<>();
 	public Type result;
 	
 	public Checker(Value program) {
@@ -40,6 +41,10 @@ public class Checker {
 		
 		List<Frame> environment = new ArrayList<>();
 		environment.add(new Frame(null));
+		// Set all the default types
+		types.put(Type.any.name, Type.any);
+		types.put(Type.number.name, Type.number);
+		types.put(Type.bool.name, Type.bool);
 		return check(program, environment);
 	}
 	
@@ -102,9 +107,7 @@ public class Checker {
 			
 			// Lastly, we want to perform a final check
 			return check(val.getSubexpressions().get(0), env);
-		}else if (e instanceof Parameter)
-			return check((Parameter)e, env);
-		else if (e instanceof Reference)
+		}else if (e instanceof Reference)
 			return check((Reference)e, env);
 		else if (e instanceof Literal)
 			return Type.number;
@@ -116,10 +119,32 @@ public class Checker {
 		return variables;
 	}
 	
+	protected Type resolveAnnotation(Type annot, Type valued, NameBinding bind) {
+		if (annot instanceof Type.Stub) {
+			// Stubs receive a leading - to the type name so that the stub may not
+			//  be confused with a real type value.
+			String realName = annot.name.substring(1);
+			// try to resolve the stub name
+			if (types.containsKey(realName))
+				annot = types.get(realName);
+			else
+				throw new CheckException("Type annotation for ", bind,
+						" cannot be resolved! Undefined type \"", realName, "\".");
+		}
+		if (valued == null || valued.isa(annot))
+			return annot;
+		else
+			throw new CheckException("Type of assignment's value, ", valued,
+					" cannot be cast to match the type of the given annotation: ",
+					annot, "!");
+	}
+	
 	protected Type check(Assignment asgn, List<Frame> env) {
 		Type type = null;
 		// There cannot be two variables with the same name in the same scope
 		// TODO we will need to modify this for different signatures...
+		// There can be two functions with the same name as long as they are variants
+		//  of the same parent type. 
 		Frame curScope = env.get(env.size() - 1);
 		String name = asgn.getVarName();
 		if (curScope.defined(name) != null) {
@@ -133,7 +158,11 @@ public class Checker {
 		// If the parameter list is null, then this is simply a variable. Otherwise, this is
 		// a function definition. 
 		if (asgn.getParamList() == null) {
+			// Try to get the type of this assignment
+			// If there is an annotation connected, the type of value <: annotation
 			type = check(asgn.getValue(), env);
+			if (asgn.getAnnotation() != null)
+				type = resolveAnnotation(asgn.getAnnotation(), type, asgn);
 			var.setType(type);
 			variables.add(var);
 			curScope.allocate(name, var);
@@ -154,8 +183,13 @@ public class Checker {
 			for (Parameter parameter: asgn.getParamList()) {
 				// Check the parameter (needed if it has a default value)
 				Type ptype = check(parameter, env);
+				// if the parameter has a type annotation, it must work with the type of given
+				if (parameter.getAnnotation() != null)
+					ptype = resolveAnnotation(parameter.getAnnotation(), ptype, parameter);
 				String param = parameter.getName();
 				Variable paramVar = new Variable(param, null, parameter);
+				if (ptype == null)
+					ptype = new Undetermined.Param(paramVar); // set it as undetermined so far
 				paramVar.setType(ptype);
 				inputTypes.add(ptype);
 				variables.add(paramVar);
@@ -169,16 +203,23 @@ public class Checker {
 			// We may not have the type of the function yet, but we can assign the type
 			//  of the parameters. Set the type of this variable in case a recursive call
 			//  is made by the value
-			// The return is currently undetermined, but we give a link to this in case
-			//  the value will kindly set it for us
-			var.setType(new Type(new UndeterminedReturn(var), inputsReplacement));
+			
+			// The return may be determined if there is a type annotation for the function.
+			// Otherwise, we want to give an undetermined returned, which provides a link
+			//  in case the value sets a return type
+			Type returnType;
+			if (asgn.getAnnotation() != null)
+				returnType = resolveAnnotation(asgn.getAnnotation(), null, asgn);
+			else
+				returnType = new Undetermined.Return(var);
+			var.setType(new Type(returnType, inputsReplacement));
 			
 			env.add(fxScope);
 			// Now that the function scope is made, use it for the value
 			type = check(asgn.getValue(), env);
 			env.remove(env.size() - 1); // Remove the scope of the function call
 			// Now we can set the type of the return (assuming it has not been set already)
-			if (var.getType().output instanceof UndeterminedReturn) {
+			if (var.getType().output instanceof Undetermined.Return) {
 				var.getType().output = type;
 			}else {
 				// If it has already been set, we need to verify that what it was set to is consistent
@@ -290,8 +331,7 @@ public class Checker {
 		/*
 		 * This is the tricky part. We want to find the type of this reference, which is dependent
 		 * upon the type of the reference, and may also use the types given in the argument list.
-		 * TODO: We will have to come back, because this assumes that if the variable is a
-		 * function, then this must be a function call. This is not necessarily a good assumption.
+		 * Alternatively, if the referenced is undetermined, we will see if maybe it is a function.
 		 */
 		if (referenced.getType().isFunction()) {
 			// Just because this reference is a function type does *not* mean that it is being
@@ -302,7 +342,7 @@ public class Checker {
 			List<Subexpression> subexp = ref.getParent().getSubexpressions();
 			int refAt = subexp.indexOf(ref);
 			if (refAt == -1) 
-				throw new CheckException("Missing argument(s) for function call ", ref, "!");
+				throw new CheckException("Reference ", ref, " cannot be found in parents subexpressions!");
 			if (refAt + 1 >= subexp.size()) {
 				ref.setType(referenced.getType());
 				return referenced.getType(); // not using a call since there are no arguments.
@@ -454,6 +494,9 @@ public class Checker {
 			// TODO: Here we assume that we are just doing a call, and thus the type of this
 			//  reference is merely the output type of the function
 			ref.setType(referenced.getType().output);
+		}else if (referenced.getType() instanceof Undetermined) {
+			// could be a function or could be a regular variable
+			ref.setType(referenced.getType());
 		}else {
 			// If it is not a function, this is the easy part. We can simply assign the type
 			//  of the reference to the same as the variable being referenced
@@ -507,20 +550,21 @@ public class Checker {
 	}
 	
 	protected Type check(Parameter param, List<Frame> env) {
-		if (param.getDefaultVal() != null)
-			return check(param.getDefaultVal(), env);
+		if (param.getDefaultVal() != null) {
+			Type checked = check(param.getDefaultVal(), env);
+			checked.setDefaulted(true);
+			return checked;
+		}
 		// Otherwise we are going to return undetermined
-		return Type.number; // TODO: for now we are returning Num, since that is all we have
+		return null;
 	}
 	
 	protected Type expectType(Type expected, Type got) {
 		if (got.isa(expected))
 			return expected;
-		if (got instanceof UndeterminedReturn) {
-			Variable var =((UndeterminedReturn)got).from;
-			var.getType().output = expected; // determine the output
-			return expected;
-		}
+		if (got instanceof Undetermined) 
+			return ((Undetermined)got).coerce(expected);
+		
 		return null;
 	}
 	

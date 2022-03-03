@@ -41,7 +41,7 @@ public class Optimizer {
 					removeList.add(var);
 				// If there is only one usage, try to remove it
 				else if (var.references.size() == 1 && var.source != null) {
-					// Cannot replace parameters and cannot currently TODO replace functions
+					// Cannot replace parameters and cannot currently TODO inline functions
 					if (var.source instanceof Assignment &&
 							((Assignment)var.source).getParamList() == null) {
 						// Replace the reference with the value
