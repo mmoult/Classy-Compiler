@@ -3,11 +3,13 @@ package classy.compiler.analyzing;
 import java.util.HashSet;
 import java.util.Set;
 
+import classy.compiler.parsing.TypeDefinition;
+
 public class Type {
 	// Default available types
-	public static Type any = new Type();
-	public static Type number = new Type("Num");
-	public static Type bool = new Type("Bool", number);
+	public static Type Any = new Type();
+	public static Type Int = new Type("Int");
+	public static Type Bool = new Type("Bool");
 	
 	// Nominal type
 	protected String name = null;
@@ -17,13 +19,15 @@ public class Type {
 	protected Type[] inputs = null;
 	protected boolean defaulted = false;
 	
+	protected TypeDefinition source = null;
+	
 	private Type() {
 		// for creating any. All other types get a default parent in construction
 		name = "Any";
 	}
 	public Type(String name) {
 		this.name = name;
-		parents = new Type[]{any};
+		parents = new Type[]{Any};
 	}
 	public Type(String name, Type...parents) {
 		this(name);
@@ -79,7 +83,7 @@ public class Type {
 		
 		// If one is a function and the other is not, then they cannot be related unless the
 		//  parent is any
-		return parent.equals(Type.any);
+		return parent.equals(Type.Any);
 	}
 	/**
 	 * The recursive call of {@link #isa(Type)}. Uses a set of checked types to avoid
@@ -160,6 +164,10 @@ public class Type {
 		return name == null;
 	}
 	
+	public String getName() {
+		return name;
+	}
+	
 	public boolean equals(Object other) {
 		if (this == other)
 			return true;
@@ -185,6 +193,13 @@ public class Type {
 		}
 		// Otherwise, this is not exact
 		return false;
+	}
+	
+	public void setSource(TypeDefinition source) {
+		this.source = source;
+	}
+	public TypeDefinition getSource() {
+		return source;
 	}
 	
 	@Override

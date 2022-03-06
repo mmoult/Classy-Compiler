@@ -12,10 +12,15 @@ public class Literal extends Subexpression {
 	@Override
 	public void parse(TokenIterator it, int end) {
 		// There can be several types of literals.
-		// Right now, we are just accounting for one
-		it.match(Token.Type.NUMBER, end);
-		token = it.token();
-		it.next(end);
+		// Two that are currently supported are numbers and bool literals
+		
+		if (it.match(Token.Type.NUMBER, end) || it.match(Token.Type.TRUE, end) ||
+				it.match(Token.Type.FALSE, end)) {			
+			it.match(Token.Type.NUMBER, end);
+			token = it.token();
+			it.next(end);
+		}else
+			throw new ParseException("Unknown literal token ", it.token(), "!");
 	}
 	
 	public Token getToken() {

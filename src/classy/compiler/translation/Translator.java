@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Scanner;
 import java.util.Set;
 
+import classy.compiler.analyzing.Checker;
 import classy.compiler.analyzing.Type;
 import classy.compiler.analyzing.Variable;
 import classy.compiler.parsing.Tuple;
@@ -26,19 +27,28 @@ import classy.compiler.parsing.Subexpression;
 import classy.compiler.parsing.Value;
 
 public class Translator {
-	private int varNum = 1;
-	private int inFunction = 0;
+	protected int varNum = 1;
+	protected int inFunction = 0;
 	protected LinePlacer lines;
-	private Map<Variable, String> varMangle;
+	protected Map<Variable, String> varMangle;
+	protected Map<Type, String> typeMangle;
+	private Checker checker = new Checker();
 
 	
-	public Translator(Value program, List<Variable> vars, Type result) {
+	public Translator(Value program, List<Variable> vars, List<Type> types) {
 		// We are going to want to map out all variables and to what new name they will receive.
 		//  We don't want any name conflicts (even if they are shadowed) so we will mangle the
 		//  names to make some new name.
 		// Both assignments and references will be mapped to that new name.
 		varMangle = new HashMap<>();
+		typeMangle = new HashMap<>();
 		Set<String> namesUsed = new HashSet<>();
+		
+		// Some default types need to be created
+		namesUsed.add(Type.Int.getName());
+		typeMangle.put(Type.Int, Type.Int.getName());
+		namesUsed.add(Type.Bool.getName());
+		typeMangle.put(Type.Bool, Type.Bool.getName());
 		
 		for (Variable var: vars) {
 			String name = var.getName();
@@ -56,8 +66,28 @@ public class Translator {
 			varMangle.put(var, useName);
 		}
 		
+		// Do the same thing for types
+		for (Type type: types) {
+			String name = type.getName();
+			if (name == null)
+				continue;
+			
+			String useName = cleanIdentifier(name);
+			if (namesUsed.contains(name)) {
+				// There was a collision, so we try another
+				int cnt = 0;
+				while (namesUsed.contains(name + cnt)) {
+					cnt++;
+				}
+				useName = name + cnt;
+			}
+			// Great! we found a name we can use.
+			namesUsed.add(useName);
+			typeMangle.put(type, useName);
+		}
+		
 		// Now begin the translation process
-		translate(program, result);
+		translate(program, types);
 	}
 	
 	protected String cleanIdentifier(String dirty) {
@@ -71,22 +101,17 @@ public class Translator {
 		return clean.toString();
 	}
 	
-	public void translate(Value program, Type result) {		
+	public void translate(Value program, List<Type> types) {		
 		// insert the printi.ll file, which is needed to print the result of main
 		Scanner scan = null;
 		try {
-			List<String> topLines = new ArrayList<>();
-			scan = new Scanner(new File("libs/printi.ll"));
-			while (scan.hasNextLine())
-				topLines.add(scan.nextLine());
-			scan.close();
-			
-			lines = new LinePlacer(topLines);
-			
+			lines = new LinePlacer(new ArrayList<>());
 			lines.addLine("define dso_local i32 @main() {");
 			lines.deltaIndent(1);
-			// We want to put the return in varNum
-			int retAt = allocate();
+			// We want to put the return in retAt
+			// But that requires us to know the type that the return will be
+			Type result = check(program);
+			int retAt = allocate(result);
 			//
 			for (Expression e: program.getSubexpressions()) {
 				translate(e, ""+retAt);
@@ -94,12 +119,30 @@ public class Translator {
 			//
 			int ret = load(""+retAt);
 			// If the result type is a number, then print it out
-			if (result.isa(Type.number))
+			if (result.isa(Type.Int))
 				lines.addLine("call void @printi(i32 %", Integer.toString(ret), ")");
 			// TODO: We want to have some print for other types too
 			lines.addLine("ret i32 0");
 			lines.deltaIndent(-1);
 			lines.addLine("}");
+			
+			// Lastly, define all the types that we used
+			LinePlacer.State oldState = lines.getTop();
+			// Define the default types:
+			// TODO here last
+			for (Type t: types) {
+				// create the struct with the name that mangling decided
+				// %struct.Bar = type { %struct.Foo, %struct.Foo }
+				lines.addLine("%", typeMangle.get(t), " = type { ", /* give types their fields */ "}");
+			}
+			lines.revertState(oldState);
+			
+			// Functions do not need to be declared before usage in LLVM, so we include the printi
+			//  function at the very bottom (so during debugging, the file is easier to read)
+			scan = new Scanner(new File("libs/printi.ll"));
+			while (scan.hasNextLine())
+				lines.addLine(scan.nextLine());
+			scan.close();
 		} catch (FileNotFoundException e1) {
 			throw new RuntimeException("Could not find requisite file: \"libs/itos.ll\"!");
 		}
@@ -115,7 +158,7 @@ public class Translator {
 		}else if (e instanceof If) {
 			If if_ = (If)e;
 			// We want to find the result of the condition, then jump from there
-			int cond = allocate();
+			int cond = allocate(check(if_.getCondition()));
 			translate(if_.getCondition(), ""+cond);
 			// since literals allocate it, we want to get our value back through a load
 			int loaded = load(""+cond);
@@ -151,7 +194,7 @@ public class Translator {
 			
 			// First, we must find if this is a value assignment or a function assignment
 			if (asgn.getParamList() == null) {
-				allocate(name);
+				allocate(check(asgn.getValue()), name);
 				translate(asgn.getValue(), name);
 			}else {
 				// We are going to make a function declaration, which needs to be on the top
@@ -178,7 +221,7 @@ public class Translator {
 				lineCmps[i++] = ") {";
 				lines.addLine(lineCmps);
 				lines.deltaIndent(1);
-				int fRet = allocate();
+				int fRet = allocate(check(asgn.getValue()));
 				
 				translate(asgn.getValue(), fRet+"");
 				
@@ -222,7 +265,7 @@ public class Translator {
 				int[] argsAt = new int[args.length];
 				int i=0;
 				for (Value arg: args) {
-					int alloc = allocate();
+					int alloc = allocate(check(arg));
 					translate(arg, alloc+"");
 					argsAt[i] = load(alloc+"");
 					i++;
@@ -269,7 +312,7 @@ public class Translator {
 						return; 
 					}
 				}else {
-					int la = allocate();
+					int la = allocate(check(bop.getLHS()));
 					translate(bop.getLHS(), la+"");
 					int ll = load(la+"");
 					lhs = "%" + ll;
@@ -295,7 +338,7 @@ public class Translator {
 						if (secondTrue)
 							store("1", retAt);
 					}else {
-						int ra = allocate();
+						int ra = allocate(check(bop.getRHS()));
 						translate(bop.getRHS(), ra+"");
 						int rr = load(ra+"");
 						String rhs = "%" + rr;
@@ -325,7 +368,7 @@ public class Translator {
 						if (secondTrue)
 							store("1", retAt);
 					}else {
-						int ra = allocate();
+						int ra = allocate(check(bop.getRHS()));
 						translate(bop.getRHS(), ra+"");
 						int rr = load(ra+"");
 						String rhs = "%" + rr;
@@ -351,7 +394,7 @@ public class Translator {
 				// We can optimize if it is an int literal by a direct output
 				rhs = ((Literal)opRhs.get(0)).getToken().getValue();
 			}else {
-				int ra = allocate();
+				int ra = allocate(check(op.getRHS()));
 				translate(op.getRHS(), ra+"");
 				int rl = load(ra+"");
 				rhs = "%" + rl;
@@ -365,7 +408,7 @@ public class Translator {
 					// We can optimize if it is an int literal by a direct output
 					lhs = ((Literal)opLhs.get(0)).getToken().getValue();
 				}else {
-					int la = allocate();
+					int la = allocate(check(bop.getLHS()));
 					translate(bop.getLHS(), la+"");
 					int ll = load(la+"");
 					lhs = "%" + ll;
@@ -424,14 +467,15 @@ public class Translator {
 		}
 	}
 	
-	protected int allocate() {
+	protected int allocate(Type t) {
 		int retAt = varNum++;
-		lines.addLine("%", Integer.toString(retAt), " = alloca i32, align 4");
+		allocate(t, retAt+"");
 		return retAt;
 	}
-	protected void allocate(String name) {
-		lines.addLine("%", name, " = alloca i32, align 4");
+	protected void allocate(Type t, String name) {
+		lines.addLine("%", name, " = alloca ", typeMangle.get(t), ", align 4");
 	}
+	
 	protected void store(String what, String at) {
 		lines.addLine("store i32 ", what, ", i32* %", at, ", align 4");
 	}
@@ -443,5 +487,9 @@ public class Translator {
 	
 	public List<String> getOutLines() {
 		return lines.getOutLines();
+	}
+	
+	private Type check(Expression e) {
+		return checker.check(e, List.of());
 	}
 }

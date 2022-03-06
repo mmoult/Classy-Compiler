@@ -126,6 +126,8 @@ public class Value extends Subexpression {
 		it.match(Token.Type.PERIOD, end);
 		switch(it.token().getType()) {
 		case NUMBER:
+		case TRUE:
+		case FALSE:
 			return new Literal(this);
 		case OPEN_BRACE:
 			return new Block(this, false);

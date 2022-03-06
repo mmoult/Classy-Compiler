@@ -11,6 +11,9 @@ Subexpressions are a subset of expressions which must result in a value. The vas
 * [Operators](#operators)
 * [Conditionals](#conditionals)
 * [Blocks](#blocks)
+* [Types](#types)
+	+ [Inheritance](#inheritance)
+	+ [Generics](#generics)
 * [Documentation](#documentation)
 
 ## Assignments
@@ -180,6 +183,55 @@ let pascal(row: Nat) = {
 }
 ```
 Observe that the value of the function is a block. Within that block, there are conditional constructs, variable definitions, and a recursive function definition (which itself is a block).
+
+## Types
+Classy is a statically typed language with nominally-typed inheritance and dynamic dispatch. 
+
+Types are automatically assumed in assignments. Type annotations may optionally be provided that will require the type of the value to be a subtype of the specified type. For example, `let myVar: T = value` will set the type of myVar to T, assuming that T is a supertype of value's type.
+
+Type annotations may also be provided for parameters of function declarations (`let foo(a: Num, b: Num) = a + b`) or for function returns (`let foo(a): Num = 10`).
+
+New types may be specified with the syntax:
+```
+type NAME = FIELD_LIST
+```
+where NAME is any valid identifier (though convention dictates the type should be capitalized), and the field list is a list of variables in the same format as a function parameter list. For example, a type `Foo` with fields a and b could be specified thus:
+```
+type Foo = (a: A, b: B)
+```
+If only one field is given, no parentheses are required:
+```
+type Bar = a: A
+```
+
+To construct a type, all fields without default values must be provided. For the example type `Foo`, a construction may look like:
+```
+Foo new (myA, myB)
+```
+where myA is a value of type A and myB is a value of type B.
+
+If `Foo` was defined with default values such as:
+```
+type Foo = (a = 2, b = 3)
+```
+then a void construction call may be used for Foo. As with regular functions, the fields may be provided anyway, or fields may be given in a different order if they have the correct labels (see [Functions](#functions)).
+
+Methods can be set for any type by a syntax similar to a regular function definition. Assuming that type `Dog` was previously defined, a function `makeNoise` can be defined as such:
+```
+let Dog.makeNoise() = 0
+``` 
+and the `makeNoise` function can be called on a dog object, `fido`, by either `fido.makeNoise()` or `fido makeNoise()`.
+
+### Inheritance
+Subtyping may be specified using the `isa` keyword. Suppose that A is a subtype of some pre-defined type B. In A's declaration, this relationship could be represented as such:
+```
+type A isa B = ...
+```
+
+If A is a subtype of B, then all operations that can be performed on B can be performed on A. Subtyping also gives the ability to overload functions, which is providing more specific function variants to be used for the subtype.  
+
+### Generics
+...
 
 ## Documentation
 It is good practice to include comments to document the reasoning behind program approach and execution. All comments begin with the pound character (`#`). By default, a comment will go from the `#` until the end of the line. However, a comment can be made to span multiple lines with `#|` `|#` pairs, where `#|` is the opening, and `|#` is the closing. For example:

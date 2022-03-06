@@ -37,6 +37,8 @@ public class Token {
 		PERCENT,
 		SLASH,
 		// logical operations
+		TRUE,
+		FALSE,
 		NEQUAL,
 		EQUAL,
 		LESS_THAN,
@@ -52,7 +54,9 @@ public class Token {
 		IF,
 		ELSE,
 		LAMBDA,
-		SELF
+		SELF,
+		TYPE,
+		ISA
 	}
 	
 	public String getValue() {

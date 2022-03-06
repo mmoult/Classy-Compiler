@@ -25,6 +25,14 @@ public class IdentifierProcessor extends Processor {
 			return Token.Type.VOID;
 		case "self":
 			return Token.Type.SELF;
+		case "true":
+			return Token.Type.TRUE;
+		case "false":
+			return Token.Type.FALSE;
+		case "type":
+			return Token.Type.TYPE;
+		case "isa":
+			return Token.Type.ISA;
 		}
 		return Token.Type.IDENTIFIER;
 	}

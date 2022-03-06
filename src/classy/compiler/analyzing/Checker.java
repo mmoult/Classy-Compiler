@@ -8,8 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-import classy.compiler.parsing.Tuple;
-import classy.compiler.parsing.Tuple.LabeledValue;
+import classy.compiler.lexing.Token;
 import classy.compiler.parsing.Assignment;
 import classy.compiler.parsing.BinOp;
 import classy.compiler.parsing.Block;
@@ -21,13 +20,25 @@ import classy.compiler.parsing.Operation;
 import classy.compiler.parsing.Parameter;
 import classy.compiler.parsing.Reference;
 import classy.compiler.parsing.Subexpression;
+import classy.compiler.parsing.Tuple;
+import classy.compiler.parsing.Tuple.LabeledValue;
+import classy.compiler.parsing.TypeDefinition;
 import classy.compiler.parsing.Value;
 
 public class Checker {
+	// Variables and types define all the variables and types used in the program.
+	// Conceptually they are sets, but we never need to verify that no instance occurs
+	//  more than once, so we save time by making them lists.
 	protected List<Variable> variables = new ArrayList<>();
+	protected List<Type> types = new ArrayList<>();
+	// A set of references that have already been checked. We can return the
+	//  previously calculated type instead of checking them again.
 	protected Set<Reference> checkedRef = new HashSet<>();
-	protected Map<String, Type> types = new HashMap<>();
+	
 	public Type result;
+	
+	
+	public Checker() {}
 	
 	public Checker(Value program) {
 		result = check(program);
@@ -40,18 +51,23 @@ public class Checker {
 		// We also need to type check the entire program
 		
 		List<Frame> environment = new ArrayList<>();
-		environment.add(new Frame(null));
+		Frame first = new Frame(null);
 		// Set all the default types
-		types.put(Type.any.name, Type.any);
-		types.put(Type.number.name, Type.number);
-		types.put(Type.bool.name, Type.bool);
+		types.add(Type.Any);
+		types.add(Type.Int);
+		types.add(Type.Bool);
+		for (Type t: types)
+			first.makeType(t);
+		environment.add(first);
 		return check(program, environment);
 	}
 	
-	protected Type check(Expression e, List<Frame> env) {
+	public Type check(Expression e, List<Frame> env) {
 		// dispatch on the appropriate checking function
 		if (e instanceof Assignment)
 			return check((Assignment)e, env);
+		else if (e instanceof TypeDefinition)
+			return check((TypeDefinition)e, env);
 		else if (e instanceof Block)
 			return check((Block)e, env);
 		else if (e instanceof If)
@@ -110,7 +126,7 @@ public class Checker {
 		}else if (e instanceof Reference)
 			return check((Reference)e, env);
 		else if (e instanceof Literal)
-			return Type.number;
+			return check((Literal)e, env);
 		else
 			throw new CheckException("Unchecked expression: " + e);
 	}
@@ -118,18 +134,24 @@ public class Checker {
 	public List<Variable> getVariables() {
 		return variables;
 	}
+	public List<Type> getTypes() {
+		return types;
+	}
 	
-	protected Type resolveAnnotation(Type annot, Type valued, NameBinding bind) {
+	protected Type resolveAnnotation(Type annot, Type valued, List<Frame> env, NameBinding bind) {
 		if (annot instanceof Type.Stub) {
 			// Stubs receive a leading - to the type name so that the stub may not
 			//  be confused with a real type value.
 			String realName = annot.name.substring(1);
 			// try to resolve the stub name
-			if (types.containsKey(realName))
-				annot = types.get(realName);
-			else
+			Type referenced = null;
+			for (int i = env.size() - 1; i>=0 && referenced==null; i--) {
+				referenced = env.get(i).typeDefined(realName);
+			}
+			if (referenced == null)
 				throw new CheckException("Type annotation for ", bind,
 						" cannot be resolved! Undefined type \"", realName, "\".");
+			return referenced;
 		}
 		if (valued == null || valued.isa(annot))
 			return annot;
@@ -147,8 +169,8 @@ public class Checker {
 		//  of the same parent type. 
 		Frame curScope = env.get(env.size() - 1);
 		String name = asgn.getVarName();
-		if (curScope.defined(name) != null) {
-			Expression firstInstance = curScope.defined(name).source;
+		if (curScope.varDefined(name) != null) {
+			NameBinding firstInstance = curScope.varDefined(name).source;
 			throw new CheckException("Multiple definitions of same variable name \"",
 					name, " found in the same scope! First instance: ", firstInstance,
 					" and second instance: ", asgn);
@@ -162,16 +184,16 @@ public class Checker {
 			// If there is an annotation connected, the type of value <: annotation
 			type = check(asgn.getValue(), env);
 			if (asgn.getAnnotation() != null)
-				type = resolveAnnotation(asgn.getAnnotation(), type, asgn);
+				type = resolveAnnotation(asgn.getAnnotation(), type, env, asgn);
 			var.setType(type);
 			variables.add(var);
-			curScope.allocate(name, var);
+			curScope.allocate(var);
 		}else {
 			// Function definitions are special since the value can have references to itself.
 			// Also, it needs to add the parameters in a scope that contains only the value.
 			
 			// add this function's name to the environment to make recursive calls possible
-			curScope.allocate(name, var);
+			curScope.allocate(var);
 			// Then create a new function scope where the parameters will reside
 			Frame fxScope = new Frame(asgn.getVarName());
 			// Even though we will need to look through a variable list later, the elements
@@ -185,7 +207,7 @@ public class Checker {
 				Type ptype = check(parameter, env);
 				// if the parameter has a type annotation, it must work with the type of given
 				if (parameter.getAnnotation() != null)
-					ptype = resolveAnnotation(parameter.getAnnotation(), ptype, parameter);
+					ptype = resolveAnnotation(parameter.getAnnotation(), ptype, env, parameter);
 				String param = parameter.getName();
 				Variable paramVar = new Variable(param, null, parameter);
 				if (ptype == null)
@@ -193,7 +215,7 @@ public class Checker {
 				paramVar.setType(ptype);
 				inputTypes.add(ptype);
 				variables.add(paramVar);
-				fxScope.allocate(param, paramVar);
+				fxScope.allocate(paramVar);
 			}
 			// to replace the inputs to the function type (with any defaults)
 			Type[] inputsReplacement = new Type[inputTypes.size()];
@@ -209,7 +231,7 @@ public class Checker {
 			//  in case the value sets a return type
 			Type returnType;
 			if (asgn.getAnnotation() != null)
-				returnType = resolveAnnotation(asgn.getAnnotation(), null, asgn);
+				returnType = resolveAnnotation(asgn.getAnnotation(), null, env, asgn);
 			else
 				returnType = new Undetermined.Return(var);
 			var.setType(new Type(returnType, inputsReplacement));
@@ -293,6 +315,25 @@ public class Checker {
 		return type;
 	}
 	
+	protected Type check(TypeDefinition def, List<Frame> env) {
+		// Verify that there is not already a type with this same name
+		Frame curScope = env.get(env.size() - 1);
+		String name = def.getTypeName();
+		if (curScope.typeDefined(name) != null) {
+			TypeDefinition firstInstance = curScope.typeDefined(name).source;
+			throw new CheckException("Multiple type definitions with the same type name \"",
+					name, " found in the same scope! First instance: ", firstInstance,
+					" and second instance: ", def);
+		}
+		
+		// We want to create a new type from this definition
+		Type created = new Type(def.getTypeName());
+		types.add(created);
+		curScope.makeType(created);
+		
+		return created;
+	}
+	
 	protected Type check(Reference ref, List<Frame> env) {
 		if (checkedRef.contains(ref))
 			return ref.getType(); // do not re-check a reference
@@ -306,7 +347,7 @@ public class Checker {
 			Frame search = env.get(i);
 			if (name.equals("self") && search.functionName != null)
 				name = search.functionName; // define "self"
-			referenced = search.defined(name);
+			referenced = search.varDefined(name);
 		}
 		if (referenced == null) {
 			// If the name is "self", then the user tried to use self in a non-function definition
@@ -534,13 +575,13 @@ public class Checker {
 	
 	protected Type check(Operation op, List<Frame> env) {
 		Type rhsType = check(op.getRHS(), env);
-		rhsType = expectType(Type.number, rhsType);
+		rhsType = expectType(Type.Int, rhsType);
 		if (rhsType == null)
 			throw new CheckException("The type of the rhs on operation ", op, " must be a number! ",
 					rhsType, " found instead.");
 		if (op instanceof BinOp) {
 			Type lhsType = check(((BinOp)op).getLHS(), env);
-			lhsType = expectType(Type.number, lhsType);
+			lhsType = expectType(Type.Int, lhsType);
 			if (lhsType == null)
 				throw new CheckException("The type of the lhs on operation ", op, " must be a number! ",
 						lhsType, " found instead.");
@@ -557,6 +598,12 @@ public class Checker {
 		}
 		// Otherwise we are going to return undetermined
 		return null;
+	}
+	
+	protected Type check(Literal lit, List<Frame> env) {
+		if (lit.getToken().getType() == Token.Type.NUMBER)
+			return Type.Int;
+		return Type.Bool; // the other type is true or false
 	}
 	
 	protected Type expectType(Type expected, Type got) {

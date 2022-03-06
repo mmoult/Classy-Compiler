@@ -43,6 +43,8 @@ public class Parser {
 			Expression found;
 			if (it.match(Token.Type.LET, end))
 				found = new Assignment(parent);
+			else if (it.match(Token.Type.TYPE, end))
+				found = new TypeDefinition(parent);
 			else
 				found = new Value();
 			

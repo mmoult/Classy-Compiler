@@ -1,6 +1,5 @@
 package classy.compiler.parsing;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import classy.compiler.analyzing.Type;
@@ -18,7 +17,7 @@ public class Assignment extends NameBinding {
 
 	@Override
 	public void parse(TokenIterator it, int end) {
-		// Syntax of: let varName = value
+		// Syntax: let varName = value
 		// For a function definition: let varName (param1, ...) = value
 		if (!it.match(Token.Type.LET, end))
 			throw new ParseException("Definition must begin with \"let\" keyword! ", it.token(), 
@@ -36,39 +35,7 @@ public class Assignment extends NameBinding {
 		// this is a function definition.
 		if (it.match(Token.Type.OPEN_PAREN, end)) {
 			// Parse out the param list
-			paramList = new ArrayList<>();
-			int start = it.index;
-			// We do not have any support for type annotations yet, so we just look for identifiers
-			it.next(end);
-			// We need to find the end paren and verify that it is before this's end
-			int close = it.find(Token.Type.CLOSE_PAREN, end);
-			if (close == -1)
-				throw new ParseException("Missing close paren to parameter list beginning with ",
-						it.tokens.get(start), "!");
-			while(true) {
-				int nextComma = it.find(Token.Type.COMMA, close);
-				int stop = (nextComma != -1? nextComma: close);
-				
-				boolean paramFound = false;
-				if (it.match(Token.Type.IDENTIFIER, stop + 1)) {
-					Parameter param = new Parameter();
-					param.parse(it, stop);
-					this.paramList.add(param);
-					paramFound = true;
-				}
-				// After the identifier, we must see either the end or a comma
-				if (paramFound && it.match(Token.Type.COMMA, stop + 1)) {
-					it.next(close);
-					// We are ready to parse another. We don't need to see another though,
-					//  comma ended lists are acceptable.
-					continue;
-				}else if (it.index == close)
-					break; // successfully found the end
-				else
-					throw new ParseException("Unexpected token \"", it.token(),
-							"\" found in parameter list beginning with ", it.tokens.get(start), "!");
-			}
-			it.next(end);
+			paramList = Parameter.parseParamList(it, end);
 		}
 		
 		if (it.match(Token.Type.COLON, end)) { // type annotation for the variable

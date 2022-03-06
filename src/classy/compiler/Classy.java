@@ -14,7 +14,6 @@ import java.util.Scanner;
 
 import classy.compiler.analyzing.Checker;
 import classy.compiler.analyzing.Optimizer;
-import classy.compiler.analyzing.Variable;
 import classy.compiler.lexing.Lexer;
 import classy.compiler.lexing.Token;
 import classy.compiler.parsing.Parser;
@@ -176,9 +175,8 @@ public class Classy {
 				System.out.println();
 			}
 		}
-		List<Variable> vars = check.getVariables();
 		
-		Translator translate = new Translator(program, vars, check.result);
+		Translator translate = new Translator(program, check.getVariables(), check.getTypes());
 		List<String> outLines = translate.getOutLines();
 		// Output the lines to fileName.ll
 		FileWriter fw = null;

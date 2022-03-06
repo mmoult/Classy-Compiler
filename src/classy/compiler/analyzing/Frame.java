@@ -15,12 +15,16 @@ public class Frame {
 	protected boolean fxFrame;
 	protected String functionName;
 	protected Map<String, Variable> locals;
+	protected Map<String, Type> types;
 	protected Set<Reference> externalities;
 	
 	public Frame(String fxName) {
 		this.fxFrame = fxName != null;
 		this.functionName = fxName;
 		locals = new HashMap<>();
+		types = new HashMap<>();
+		// We don't need to save type externalities, since types are never passed directly.
+		// Thus, this externality set only saves variables
 		externalities = new HashSet<>();
 	}
 	
@@ -28,12 +32,18 @@ public class Frame {
 		return fxFrame;
 	}
 	
-	public void allocate(String varName, Variable set) {
-		locals.put(varName, set);
+	public void allocate(Variable set) {
+		locals.put(set.name, set);
+	}
+	public void makeType(Type set) {
+		types.put(set.name, set);
 	}
 	
-	public Variable defined(String varName) {
+	public Variable varDefined(String varName) {
 		return locals.get(varName);
+	}
+	public Type typeDefined(String typeName) {
+		return types.get(typeName);
 	}
 	
 	public void addExternality(Reference ref) {

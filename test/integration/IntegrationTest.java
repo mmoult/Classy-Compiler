@@ -172,7 +172,7 @@ class IntegrationTest {
 	@Test
 	void typeAnnotatedFx() {
 		List<String> lines = List.of(
-			"let subFive(value: Num): Num = value - 5",
+			"let subFive(value: Int): Int = value - 5",
 			"subFive 8"
 		);
 		expectFromProgram(lines, 3);
