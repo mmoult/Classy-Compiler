@@ -558,7 +558,8 @@ public class Checker {
 	}
 	
 	protected Type check(If ife, List<Frame> env) {
-		check(ife.getCondition(), env);
+		Type condType = check(ife.getCondition(), env);
+		expectType(Type.Bool, condType);
 		Type thenType = check(ife.getThen(), env);
 		Type elseType = check(ife.getElse(), env);
 		// The less specific of the two is the type returned

@@ -1,9 +1,6 @@
 ; Declare the string that we will use for printing the number
 @.str = private unnamed_addr global [13 x i8] c"\00\00\00\00\00\00\00\00\00\00\00\00\00"
 
-; External declaration of the puts function
-declare i32 @puts(i8* nocapture) nounwind
-
 ; Function Attrs: noinline nounwind optnone uwtable
 define dso_local void @printi(i32 %0) {
   %num = alloca i32, align 4
@@ -72,4 +69,3 @@ afternum:
   call i32 @puts(i8* %string)
   ret void
 }
-

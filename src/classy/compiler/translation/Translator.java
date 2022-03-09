@@ -13,81 +13,69 @@ import java.util.Set;
 import classy.compiler.analyzing.Checker;
 import classy.compiler.analyzing.Type;
 import classy.compiler.analyzing.Variable;
-import classy.compiler.parsing.Tuple;
 import classy.compiler.parsing.Assignment;
-import classy.compiler.parsing.BinOp;
 import classy.compiler.parsing.Block;
 import classy.compiler.parsing.Expression;
 import classy.compiler.parsing.If;
 import classy.compiler.parsing.Literal;
-import classy.compiler.parsing.Operation;
 import classy.compiler.parsing.Parameter;
 import classy.compiler.parsing.Reference;
-import classy.compiler.parsing.Subexpression;
+import classy.compiler.parsing.Tuple;
+import classy.compiler.parsing.TypeDefinition;
 import classy.compiler.parsing.Value;
 
 public class Translator {
 	protected int varNum = 1;
+	protected int globalNum = 1;
+	
 	protected int inFunction = 0;
-	protected LinePlacer lines;
-	protected Map<Variable, String> varMangle;
+	// Two different write locations: in main function and outside
+	protected LinePlacer main;
+	protected LinePlacer outer;
+	
+	protected Map<Variable, String> varNames;
 	protected Map<Type, String> typeMangle;
 	private Checker checker = new Checker();
+	Set<String> namesUsed = new HashSet<>();
+	
+	// to prevent magic numbers / strings
+	private String voidPtr = "i8*";
 
 	
 	public Translator(Value program, List<Variable> vars, List<Type> types) {
-		// We are going to want to map out all variables and to what new name they will receive.
+		// Variables will receive a new name as they are assigned
+		varNames = new HashMap<>();
+		
+		// We are going to want to map out all types and to what new name they will receive.
 		//  We don't want any name conflicts (even if they are shadowed) so we will mangle the
 		//  names to make some new name.
-		// Both assignments and references will be mapped to that new name.
-		varMangle = new HashMap<>();
 		typeMangle = new HashMap<>();
-		Set<String> namesUsed = new HashSet<>();
+		namesUsed = new HashSet<>();
 		
-		// Some default types need to be created
-		namesUsed.add(Type.Int.getName());
-		typeMangle.put(Type.Int, Type.Int.getName());
-		namesUsed.add(Type.Bool.getName());
-		typeMangle.put(Type.Bool, Type.Bool.getName());
-		
-		for (Variable var: vars) {
-			String name = var.getName();
-			String useName = cleanIdentifier(name);
-			if (namesUsed.contains(name)) {
-				// There was a collision, so we try another
-				int cnt = 0;
-				while (namesUsed.contains(name + cnt)) {
-					cnt++;
-				}
-				useName = name + cnt;
-			}
-			// Great! we found a name we can use.
-			namesUsed.add(useName);
-			varMangle.put(var, useName);
-		}
-		
-		// Do the same thing for types
 		for (Type type: types) {
 			String name = type.getName();
 			if (name == null)
 				continue;
 			
-			String useName = cleanIdentifier(name);
-			if (namesUsed.contains(name)) {
-				// There was a collision, so we try another
-				int cnt = 0;
-				while (namesUsed.contains(name + cnt)) {
-					cnt++;
-				}
-				useName = name + cnt;
-			}
-			// Great! we found a name we can use.
+			String useName = mangle(name);
 			namesUsed.add(useName);
 			typeMangle.put(type, useName);
 		}
 		
 		// Now begin the translation process
 		translate(program, types);
+	}
+	
+	private String mangle(String name) {
+		String useName = cleanIdentifier(name);
+		if (namesUsed.contains(name)) {
+			// There was a collision, so we try another
+			int cnt = 0;
+			while (namesUsed.contains(name + cnt))
+				cnt++;
+			useName = name + cnt;
+		}
+		return useName;
 	}
 	
 	protected String cleanIdentifier(String dirty) {
@@ -102,100 +90,159 @@ public class Translator {
 	}
 	
 	public void translate(Value program, List<Type> types) {		
-		// insert the printi.ll file, which is needed to print the result of main
+		main = new LinePlacer(new ArrayList<>());
+		outer = new LinePlacer(new ArrayList<>());
+		main.deltaIndent(1);
+		
+		// Previously we could allocate space for the return before we continued.
+		//  This is not possible with the inheritance tree we set up, since subclasses
+		//  require more space than the super. Thus, the new translation model
+		//  requires each step to return the pointer location of the return.
+		String retAt = null;
+		for (Expression e: program.getSubexpressions()) {
+			retAt = translate(e);
+		}
+		
+		// We need to understand the type of the result in order to print it
+		Type result = check(program);
+		// TODO: We will have to use a dynamic dispatch of toString, since we won't necessarily
+		//  know statically that the variable is an int even if it is.
+		main.addLine("call void @IntPrint(i8* ", retAt, ")");
+		main.addLine("ret i32 0");
+		main.deltaIndent(-1);
+		main.addLine("}");
+		
+		// Lastly, add the function declaration top
+		main.getTop();
+		main.addLine("define dso_local i32 @main() {");
+		
+		// Define all the types that we used
+		main.getTop();
+		// Define the default types:
+		for (Type t: types) {
+			// create the struct with the name that mangling decided
+			// %struct.Bar = type { %struct.Foo, %struct.Foo }
+			StringBuilder typeLine = new StringBuilder("%");
+			typeLine.append(typeMangle.get(t));
+			typeLine.append(" = type { ");
+			typeLine.append(voidPtr);
+			// Now we append all the types that are parents of this type
+			for (int i=0; t.getParents() != null && i < t.getParents().length; i++) {
+				if (t.getParents()[i].equals(Type.Any))
+					continue;
+				typeLine.append(", %");
+				typeLine.append(typeMangle.get(t.getParents()[i]));
+				typeLine.append("*");
+			}
+			// Now we append all the fields of this type
+			if (t.getFields() != null) {					
+				for (String fieldName: t.getFields().keySet()) {
+					typeLine.append(", %");
+					typeLine.append(typeMangle.get(t.getFields().get(fieldName).getType()));
+					typeLine.append("*");
+				}
+			}
+			// If the field is a built-in, then we have some fields to add directly
+			if (t.equals(Type.Int)) {
+				typeLine.append(", ");
+				typeLine.append("i32");
+			}else if (t.equals(Type.Bool)) {
+				typeLine.append(", ");
+				typeLine.append("i1");
+			}
+			typeLine.append(" }");
+			main.addLine(typeLine.toString());
+		}
+		main.addLine("");
+		
+		// Functions do not need to be declared before usage in LLVM, so we include the printi
+		//  function at the very bottom (so during debugging, the file is easier to read)
+		outer.addLine();
+		loadLibrary("puts.ll");
+		loadLibrary("printi.ll");
+		loadLibrary("defprint.ll");
+	}
+	
+	protected void loadLibrary(String libName) {
 		Scanner scan = null;
 		try {
-			lines = new LinePlacer(new ArrayList<>());
-			lines.addLine("define dso_local i32 @main() {");
-			lines.deltaIndent(1);
-			// We want to put the return in retAt
-			// But that requires us to know the type that the return will be
-			Type result = check(program);
-			int retAt = allocate(result);
-			//
-			for (Expression e: program.getSubexpressions()) {
-				translate(e, ""+retAt);
-			}
-			//
-			int ret = load(""+retAt);
-			// If the result type is a number, then print it out
-			if (result.isa(Type.Int))
-				lines.addLine("call void @printi(i32 %", Integer.toString(ret), ")");
-			// TODO: We want to have some print for other types too
-			lines.addLine("ret i32 0");
-			lines.deltaIndent(-1);
-			lines.addLine("}");
-			
-			// Lastly, define all the types that we used
-			LinePlacer.State oldState = lines.getTop();
-			// Define the default types:
-			// TODO here last
-			for (Type t: types) {
-				// create the struct with the name that mangling decided
-				// %struct.Bar = type { %struct.Foo, %struct.Foo }
-				lines.addLine("%", typeMangle.get(t), " = type { ", /* give types their fields */ "}");
-			}
-			lines.revertState(oldState);
-			
-			// Functions do not need to be declared before usage in LLVM, so we include the printi
-			//  function at the very bottom (so during debugging, the file is easier to read)
-			scan = new Scanner(new File("libs/printi.ll"));
+			scan = new Scanner(new File("libs/" + libName));
 			while (scan.hasNextLine())
-				lines.addLine(scan.nextLine());
-			scan.close();
+				outer.addLine(scan.nextLine());
 		} catch (FileNotFoundException e1) {
-			throw new RuntimeException("Could not find requisite file: \"libs/itos.ll\"!");
+			throw new RuntimeException("Could not find requisite file: \"libs/" + libName + "!");
+		} finally {
+			if (scan != null)
+				scan.close();
 		}
 	}
 	
-	protected void translate(Expression e, String retAt) {
+	/*
+	 * Translates the expression and returns the pointer location of the result.
+	 */
+	protected String translate(Expression e) {
+		LinePlacer lines;
+		if (inFunction > 0)
+			lines = outer;
+		else
+			lines = main;
+		
 		if (e instanceof Value) {
-			translate(((Value)e).getSubexpressions().get(0), retAt);
+			return translate(((Value)e).getSubexpressions().get(0));
 		}else if (e instanceof Block) {
 			Block block = (Block)e;
+			String retAt = null;
 			for (Expression be : block.getBody())
-				translate(be, retAt);
+				retAt = translate(be);
+			return retAt;
 		}else if (e instanceof If) {
 			If if_ = (If)e;
+			String retAt;
 			// We want to find the result of the condition, then jump from there
-			int cond = allocate(check(if_.getCondition()));
-			translate(if_.getCondition(), ""+cond);
-			// since literals allocate it, we want to get our value back through a load
-			int loaded = load(""+cond);
-			int compare = varNum++;
-			lines.addLine("%", Integer.toString(compare), " = icmp eq i32 %", Integer.toString(loaded),", 0");
-			String tbranch = "then" + Integer.toString(compare);
-			String fbranch = "else" + Integer.toString(compare);
-			String next = "next" + Integer.toString(compare);
+			String cond = translate(if_.getCondition());
+			// TODO We need to get the boolean value from the return.
+			// We must find the boolean dynamically. There is no other way.
+			// For now we punt and assume the condition equals a Bool.
+			String tName = typeMangle.get(Type.Bool);
+			String fromBool = ""+varNum++;
+			lines.addLine("%", fromBool, " = getelementptr inbounds %", tName, ", %", tName, "* ", cond, ", i32 0, i32 1");
+			int loaded = load(fromBool, "i1", lines);
+			
+			//int compare = varNum++;
+			//lines.addLine("%", Integer.toString(compare), " = icmp eq i32 %", Integer.toString(loaded),", 0");
+			String tbranch = "then" + Integer.toString(loaded);
+			String fbranch = "else" + Integer.toString(loaded);
+			String next = "next" + Integer.toString(loaded);
 			// branch to either the true or false case
-			lines.addLine("br i1 %", Integer.toString(compare), ", label %", fbranch, ", label %", tbranch);
+			lines.addLine("br i1 %", Integer.toString(loaded), ", label %", fbranch, ", label %", tbranch);
 			lines.addLine();
 			
 			lines.addLabel(tbranch);
-			translate(if_.getThen(), retAt);
+			retAt = translate(if_.getThen());
 			lines.addLine("br label %", next);
 			
 			lines.addLabel(fbranch);
-			translate(if_.getElse(), retAt);
+			retAt = translate(if_.getElse());
 			lines.addLine("br label %", next);
 			
 			lines.addLabel(next);
+			return retAt;
 		}else if (e instanceof Literal) {
-			// store in our return the literal we find
-			String number = ((Literal)e).getToken().getValue();
-			//addLine("store i32 ", number, ", i32* %", retAt, ", align 4");
-			store(number, retAt);
+			// Literals can live statically. We want to make it global so that it has
+			//  infinite scope, (since we don't know how it will be used).
+			return setGlobalLiteral((Literal)e);
+		} else if (e instanceof TypeDefinition) {
+			return null;
 		}else if (e instanceof Assignment) {
 			Assignment asgn = (Assignment)e;
-			// We want to find what we should save this variable name as
-			String name = varMangle.get(asgn.getSourced());
-			if (name == null)
-				throw new RuntimeException("Assignment encountered without a name in translation!");
 			
 			// First, we must find if this is a value assignment or a function assignment
 			if (asgn.getParamList() == null) {
-				allocate(check(asgn.getValue()), name);
-				translate(asgn.getValue(), name);
+				//allocate(check(asgn.getValue()), name);
+				// We will get the location of the value at got
+				String got = translate(asgn.getValue());
+				// Then we need to save that we are at got
+				varNames.put(asgn.getSourced(), got);
 			}else {
 				// We are going to make a function declaration, which needs to be on the top
 				//  level. Thus, we start at the top scope, saving our old location to revert
@@ -203,56 +250,51 @@ public class Translator {
 				int prevVarNum = this.varNum;
 				this.varNum = 1;
 				this.inFunction++;
-				LinePlacer.State oldState = lines.getTop();
+				LinePlacer.State oldState = outer.getTop();
+				
+				// We want to mangle the function name to make sure there are no overlaps
+				String name = mangle(asgn.getVarName());
+				varNames.put(asgn.getSourced(), name);
 				
 				String[] lineCmps = new String[4 + (2 * asgn.getParamList().size())];
-				lineCmps[0] = "define dso_local i32 @";
+				lineCmps[0] = "define dso_local " + voidPtr + " @";
 				lineCmps[1] = name;
 				lineCmps[2] = "(";
 				int i = 3;
 				for (Parameter parameter: asgn.getParamList()) {
-					String param = varMangle.get(parameter.getSourced());
+					String param = varNames.get(parameter.getSourced());
 					if (i > 3)
-						lineCmps[i++] = ", i32 %";
+						lineCmps[i++] = ", " + voidPtr + " %";
 					else
-						lineCmps[i++] = "i32 %";
+						lineCmps[i++] = voidPtr + " %";
 					lineCmps[i++] = param;
 				}
 				lineCmps[i++] = ") {";
-				lines.addLine(lineCmps);
-				lines.deltaIndent(1);
-				int fRet = allocate(check(asgn.getValue()));
+				outer.addLine();
+				outer.addLine(lineCmps);
+				outer.deltaIndent(1);
 				
-				translate(asgn.getValue(), fRet+"");
-				
-				int loaded = load(fRet+"");
-				lines.addLine("ret i32 %", Integer.toString(loaded));
-				lines.deltaIndent(-1);
-				lines.addLine("}");
-				lines.addLine();
+				String fRet = translate(asgn.getValue());
+				outer.addLine("ret ", voidPtr, " ", fRet);
+				outer.deltaIndent(-1);
+				outer.addLine("}");
 				
 				// then the function declaration is done. Restore the state
-				lines.revertState(oldState);
+				outer.revertState(oldState);
 				this.varNum = prevVarNum;
 				this.inFunction--;
 			}
+			return null;
 		}else if (e instanceof Reference) {
-			// Reference needs to copy from the variable to the return address
+			// Reference needs to give the return address of the location
 			Reference ref = (Reference)e;
-			String name = varMangle.get(ref.getLinkedTo());
+			String name = varNames.get(ref.getLinkedTo());
 			if (name == null)
 				throw new RuntimeException("Reference encountered without a name in translation!");
 			if (ref.getArgument() == null) {
 				// Regular reference
-				if (inFunction == 0) {
-					// This requires a load and then a store
-					int value = load(name);
-					store("%"+value, retAt);
-				}else {
-					// if we are in a function, we can just use the const argument
-					store("%"+name, retAt);
-				}
-			}else {
+				return name;
+			}/*else {
 				// Function call
 				Value argument = ref.getArgument();
 				Value[] args;
@@ -289,8 +331,8 @@ public class Translator {
 				callComps[j] = ")";
 				lines.addLine(callComps);
 				store("%"+returned, retAt);
-			}
-			
+			} */
+		/*
 		}else if (e instanceof Operation) {
 			// We need to handle 'or' and 'and' first, since they could short circuit
 			if (e instanceof BinOp.And || e instanceof BinOp.Or) {
@@ -464,32 +506,85 @@ public class Translator {
 				}
 				store("%"+result, retAt);
 			}
+			*/
 		}
+		// If it was not one of those types, through an error
+		throw new RuntimeException("Expression " + e.toString() + " could not be translated!");
 	}
 	
+	protected String setGlobalLiteral(Literal lit) {
+		String name = "@l" + globalNum++;
+		LinePlacer.State oldMain = main.getTop();
+		main.deltaIndent(1);
+		LinePlacer.State oldOuter = outer.getTop();
+		
+		// Switch on the type of literal we are allocating here
+		Type litType;
+		String irName;
+		switch (lit.getToken().getType()) {
+		case NUMBER:
+			litType = Type.Int;
+			irName = "i32";
+			break;
+		case TRUE:
+		case FALSE:
+			litType = Type.Bool;
+			irName = "i1";
+			break;
+		default:
+			throw new RuntimeException("Unrecognized literal type!");
+		}
+		
+		String tName = typeMangle.get(litType);
+		// Create the literal in global scope of outer
+		// global %Int zeroinitializer, align 8
+		outer.addLine(name, " = global %", tName, " zeroinitializer, align 8");
+		
+		// Initialize the literal at the beginning of main
+		//%5 = getelementptr inbounds %struct.Foo, %struct.Foo* %2, i32 0, i32 1
+		String atIndex = "%li" + globalNum;
+		// We assume here that the first index of all literal types is the actual value
+		main.addLine(atIndex, " = getelementptr inbounds %", tName, ", %", tName, "* ", name, ", i32 0, i32 1");
+		store(lit.getToken().getValue()+"", irName, atIndex, main);
+		// to back to where we were
+		outer.revertState(oldOuter);
+		main.revertState(oldMain);
+		
+		// For translation purposes, we need to make the type of the return generic
+		String gName = "%" + varNum++;
+		LinePlacer curr = inFunction == 0 ? main : outer;
+		curr.addLine(gName, " = bitcast %", tName, "* ", name, " to ", voidPtr);
+		return gName;
+	}
+	
+	/*
 	protected int allocate(Type t) {
 		int retAt = varNum++;
 		allocate(t, retAt+"");
 		return retAt;
 	}
 	protected void allocate(Type t, String name) {
-		lines.addLine("%", name, " = alloca ", typeMangle.get(t), ", align 4");
+		lines.addLine("%", name, " = alloca %", typeMangle.get(t), ", align 4");
 	}
+	*/
 	
-	protected void store(String what, String at) {
-		lines.addLine("store i32 ", what, ", i32* %", at, ", align 4");
+	protected void store(String what, String type, String at, LinePlacer lines) {
+		lines.addLine("store ", type, " ", what, ", ", type, "* ", at, ", align 4");
 	}
-	protected int load(String from) {
+	protected int load(String from, String type, LinePlacer lines) {
 		int retAt = varNum++;
-		lines.addLine("%", Integer.toString(retAt), " = load i32, i32* %", from, ", align 4");
+		lines.addLine("%", Integer.toString(retAt), " = load ", type, ", ", type, "* ", from, ", align 4");
 		return retAt;
 	}
 	
 	public List<String> getOutLines() {
-		return lines.getOutLines();
+		List<String> lines = main.getOutLines();
+		lines.add("");
+		lines.addAll(outer.getOutLines());
+		return lines;
 	}
 	
 	private Type check(Expression e) {
-		return checker.check(e, List.of());
+		return checker.check(e, new ArrayList<>());
 	}
 }

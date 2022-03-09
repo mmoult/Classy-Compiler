@@ -1,6 +1,7 @@
 package classy.compiler.analyzing;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import classy.compiler.parsing.TypeDefinition;
@@ -14,6 +15,7 @@ public class Type {
 	// Nominal type
 	protected String name = null;
 	protected Type[] parents;
+	protected Map<String, Variable> fields;
 	// Function type
 	protected Type output = null;
 	protected Type[] inputs = null;
@@ -200,6 +202,13 @@ public class Type {
 	}
 	public TypeDefinition getSource() {
 		return source;
+	}
+	
+	public Type[] getParents() {
+		return parents;
+	}
+	public Map<String, Variable> getFields() {
+		return fields;
 	}
 	
 	@Override

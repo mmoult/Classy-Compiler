@@ -11,8 +11,12 @@ public class Variable {
 	protected String name;
 	protected Value value;
 	protected NameBinding source;
-	protected List<Reference> references;
 	protected Type type;
+	
+	protected List<Reference> references;	
+	protected boolean overriden = false;
+	protected List<Variable> overrides;
+	
 	
 	public Variable(String name, Value value, NameBinding source) {
 		this.name = name;
