@@ -17,8 +17,15 @@ public class Type {
 		// We need to give some attributes to our built-in types
 		Variable print = new Variable("..print", null, null);
 		print.type = new Type(null, new ParameterType("this", Type.Any));
-		Any.methods.put("..print", null);
-		//Variable print = new Variable()
+		Any.methods.put("..print", print);
+		Variable printi = new Variable("..print", null, null);
+		printi.type = new Type(null, new ParameterType("this", Type.Int));
+		printi.setOverrides(print);
+		Int.methods.put("..print", printi);
+		Variable printb = new Variable("..print", null, null);
+		printb.type = new Type(null, new ParameterType("this", Type.Bool));
+		printb.setOverrides(print);
+		Bool.methods.put("..print", printb);
 	}
 	
 	// Nominal type
@@ -215,6 +222,16 @@ public class Type {
 	}
 	public Map<String, Variable> getFields() {
 		return fields;
+	}
+	public Map<String, Variable> getMethods() {
+		return methods;
+	}
+	
+	public Type getOutput() {
+		return output;
+	}
+	public ParameterType[] getInputs() {
+		return inputs;
 	}
 	
 	@Override

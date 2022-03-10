@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.Scanner;
 import java.util.Set;
 
-import classy.compiler.analyzing.Checker;
+import classy.compiler.analyzing.ParameterType;
 import classy.compiler.analyzing.Type;
 import classy.compiler.analyzing.Variable;
 import classy.compiler.parsing.Assignment;
@@ -34,7 +34,7 @@ public class Translator {
 	
 	protected Map<Variable, String> varNames;
 	protected Map<Type, OutType> outTypes;
-	private Checker checker = new Checker();
+	//private Checker checker = new Checker();
 	Set<String> namesUsed = new HashSet<>();
 	
 	// to prevent magic numbers / strings
@@ -108,7 +108,7 @@ public class Translator {
 		
 		// TODO: We will have to use a dynamic dispatch of toString, since we won't necessarily
 		//  know statically that the variable is an int even if it is.
-		lines.addLine("call void @IntPrint(i8* ", retAt, ")");
+		lines.addLine("call void @..print(i8* ", retAt, ")");
 		lines.addLine("ret i32 0");
 		lines.deltaIndent(-1);
 		lines.addLine("}");
@@ -152,29 +152,179 @@ public class Translator {
 			typeLine.append(" }");
 			lines.addLine(typeLine.toString(), "; Type ID = ", type.typeNum+"");
 		}
-		lines.revertState(old);
 		
-		// Functions do not need to be declared before usage in LLVM, so we include the printi
-		//  function at the very bottom (so during debugging, the file is easier to read)
+		// We must process all of the types before any dynamic dispatch methods
+		for (Type t: types) {
+			// We also want to translate all the methods of the type
+			Map<String, Map<String, List<String>>> typeLibrary = new HashMap<>();
+			if (t.getMethods() != null) {
+				varNum = 1;
+				Map<String, Variable> methods = t.getMethods();
+				for (String methodName: methods.keySet()) {
+					Variable method = methods.get(methodName);
+					// If this method overrides another, then don't print it
+					if (!method.isOverridden())
+						continue;
+					// We will print the dynamic dispatch of this method and all overrides
+					
+					StringBuffer decl = new StringBuffer();
+					Type fxType = method.getType();
+					decl.append("define dso_local ");
+					if (fxType.getOutput() != null)
+						decl.append(voidPtr);
+					else
+						decl.append("void");
+					decl.append(" @");
+					decl.append(methodName);
+					decl.append("(");
+					boolean first = true;
+					for (ParameterType ptype: fxType.getInputs()) {
+						if (first)
+							first = false;
+						else
+							decl.append(", ");
+						decl.append(voidPtr);
+						decl.append(" %");
+						decl.append(ptype.getName());
+					}
+					decl.append(") {");
+					lines.addLine(decl.toString());
+					lines.deltaIndent(1);
+					
+					// Here is where we want to print the dynamic dispatch part
+					// If the calling type does not match any of our options,
+					//  then it falls through to this implementation
+					String casted = "%" + varNum++;
+					lines.addLine(casted, " = bitcast i8* %this to %Any*");
+					String tagAt = "%" + varNum++;
+					lines.addLine(tagAt, " = getelementptr inbounds %Any, %Any* ", casted, ", i32 0, i32 0");
+					String tag = "%" + load(tagAt, "i32", "4");
+					
+					for (Variable override : method.getOverrides()) {
+						// Get the type number for this variable
+						Type thisType = override.getType().getInputs()[0].getType();
+						OutType outType = outTypes.get(thisType);
+						
+						String cmp = "%" + varNum++;
+						lines.addLine(cmp, " = icmp eq i32 ", tag, ", " + outType.typeNum);
+						//br i1 %6, label %7, label %8
+						String match = "is" + outType.mangledName;
+						String next = "next" + varNum;
+						lines.addLine("br i1 ", cmp, ", label %", match, ", label %" + next);
+						lines.addLabel(match);
+						
+						// Translate the override
+						translateOverride(override, typeLibrary);
+						lines.addLabel(next);
+					}
+					
+					// Translate method.value
+					translateOverride(method, typeLibrary);
+					lines.deltaIndent(-1);
+					lines.addLine("}");
+				}
+			}
+		}
+		lines.revertState(old);
 		lines.addLine();
-		//loadLibrary("puts.ll");
-		//loadLibrary("printi.ll");
-		//loadLibrary("defprint.ll");
-		loadLibrary("temp.ll");
 	}
 	
-	protected void loadLibrary(String libName) {
+	protected void translateOverride(Variable override, Map<String, Map<String, List<String>>> typeLibrary) {
+		if (override.getValue() != null) {
+			String retAt = translate(override.getValue());
+			lines.addLine("ret ", voidPtr, retAt);
+		}else { // If it is null, then we assume it is saved as a built-in library
+			Type t = override.getType().getInputs()[0].getType();
+			if (!typeLibrary.containsKey(t.getName()))
+				typeLibrary.put(t.getName(), loadLibrary(t.getName() + ".ll"));
+			Map<String, List<String>> forType = typeLibrary.get(t.getName());
+			if (!forType.containsKey(override.getName()))
+				throw new RuntimeException("Missing library function of " + 
+						override.getName() + " for class " + t.getName() + "!");
+			
+			List<String> thisMethod = forType.get(override.getName());
+			lines.deltaIndent(-1);
+			Map<String, String> fixLabels = new HashMap<>();
+			for (String str : thisMethod) {
+				// One little complication is that we need to intercept register values
+				//  and print out fixed ones instead. The implementation has no idea what
+				//  number is next, so any numbered registers will be wrong
+				int percentAt = str.indexOf('%', 0);
+				while (percentAt != -1) {
+					int start = percentAt;
+					// Find if this is a numbered label
+					boolean numbered = false;
+					while(++percentAt < str.length()) {
+						char c = str.charAt(percentAt);
+						if (c == ' ' || c == ',')
+							break;
+						if (c >= '0' && c <= '9')
+							numbered = true;
+						else {
+							numbered = false;
+							break;
+						}
+					}
+					if (numbered) {
+						String register = str.substring(start, percentAt);
+						String fixed;
+						if (fixLabels.containsKey(register))
+							fixed = fixLabels.get(register);
+						else {
+							fixed = "%" + varNum++;
+							fixLabels.put(register, fixed);
+						}
+						str = str.substring(0, start) + fixed + str.substring(percentAt);
+					}
+					
+					percentAt = str.indexOf('%', start + 1);
+				}
+				lines.addLine(str);
+			}
+			lines.deltaIndent(1);
+		}
+	}
+	
+	protected Map<String, List<String>> loadLibrary(String libName) {
+		Map<String, List<String>> library = new HashMap<>();
 		Scanner scan = null;
 		try {
 			scan = new Scanner(new File("libs/" + libName));
-			while (scan.hasNextLine())
-				lines.addLine(scan.nextLine());
+			// All lines that are not in a function we want to print out immediately.
+			// However, some lines may be bound to a function, which we want to save until that
+			//  function is being translated.
+			boolean inFunction = false;
+			List<String> currFunction = null;
+			String fxName = null;
+			LinePlacer.State old = lines.getTop();
+			while (scan.hasNextLine()) {
+				String line = scan.nextLine();
+				if (inFunction) {
+					if (line.indexOf("}") != -1) {
+						// end of the function
+						inFunction = false;
+						library.put(fxName, currFunction);
+					}else {
+						currFunction.add(line);
+					}
+				}else {					
+					if (line.indexOf("FUNCTION") == 0) {
+						// We are starting a function definition
+						fxName = line.substring(9, line.indexOf(' ', 10));
+						currFunction = new ArrayList<>();
+						inFunction = true;
+					}else
+						lines.addLine(line);
+				}
+			}
+			lines.revertState(old);
 		} catch (FileNotFoundException e1) {
 			throw new RuntimeException("Could not find requisite file: \"libs/" + libName + "!");
 		} finally {
 			if (scan != null)
 				scan.close();
 		}
+		return library;
 	}
 	
 	/*
@@ -592,9 +742,5 @@ public class Translator {
 	
 	public List<String> getOutLines() {
 		return lines.getOutLines();
-	}
-	
-	private Type check(Expression e) {
-		return checker.check(e, new ArrayList<>());
 	}
 }

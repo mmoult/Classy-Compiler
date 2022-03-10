@@ -14,7 +14,7 @@ public class Variable {
 	protected Type type;
 	
 	protected List<Reference> references;	
-	protected boolean overriden = false;
+	protected boolean overridden = true;
 	protected List<Variable> overrides;
 	
 	
@@ -24,6 +24,7 @@ public class Variable {
 		if (source != null)
 			source.setSourced(this);
 		this.source = source;
+		this.overrides = new ArrayList<>();
 		
 		references = new ArrayList<>();
 	}
@@ -43,6 +44,30 @@ public class Variable {
 	
 	public void addRef(Reference referenced) {
 		references.add(referenced);
+	}
+	
+	public boolean isOverridden() {
+		return overridden;
+	}
+	public List<Variable> getOverrides() {
+		return overrides;
+	}
+	public void setOverrides(Variable superImpl) {
+		// If superImpl is itself overriding something, then this should override that,
+		//  not superImpl. We override the top parent
+		while (!superImpl.overridden)
+			superImpl = superImpl.overrides.get(0);
+		// We found the top parent
+		superImpl.overrides.add(this);
+		// If we were overridden, then all need to override the new top
+		if (this.overridden) {
+			this.overridden = false;
+			for (Variable overridesUs: this.overrides) {
+				overridesUs.overrides.remove(this);
+				overridesUs.overrides.add(superImpl);
+			}
+		}
+		this.overrides.add(superImpl);
 	}
 	
 	public void setType(Type type) {

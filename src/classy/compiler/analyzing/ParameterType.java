@@ -26,5 +26,12 @@ public class ParameterType {
 	public boolean getImplicit() {
 		return implicit;
 	}
+	
+	public String getName() {
+		return name;
+	}
+	public Type getType() {
+		return type;
+	}
 
 }
