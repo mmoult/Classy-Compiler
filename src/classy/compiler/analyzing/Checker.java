@@ -201,10 +201,13 @@ public class Checker {
 			// We actually need these variables saved before the function value check in
 			//  case they are externalities for a nested function!
 			variables.add(var);
-			List<Type> inputTypes = new ArrayList<>(asgn.getParamList().size());
+			List<ParameterType> inputTypes = new ArrayList<>(asgn.getParamList().size());
 			for (Parameter parameter: asgn.getParamList()) {
 				// Check the parameter (needed if it has a default value)
-				Type ptype = check(parameter, env);
+				Value defaultValue = parameter.getDefaultVal();
+				Type ptype = null;
+				if (defaultValue != null)
+					ptype = check(parameter.getDefaultVal(), env);
 				// if the parameter has a type annotation, it must work with the type of given
 				if (parameter.getAnnotation() != null)
 					ptype = resolveAnnotation(parameter.getAnnotation(), ptype, env, parameter);
@@ -213,15 +216,23 @@ public class Checker {
 				if (ptype == null)
 					ptype = new Undetermined.Param(paramVar); // set it as undetermined so far
 				paramVar.setType(ptype);
-				inputTypes.add(ptype);
+				// For constructing the type of this variable, we must use a ParameterType because
+				//  it has an attached name. This is important since the checker will use the type,
+				//  not the source of the variable.
+				ParameterType paramType = new ParameterType(param, ptype);
+				// We must also pass along the default value to the parameter type
+				paramType.setDefaultValue(parameter.getDefaultVal());
+				inputTypes.add(paramType);
 				variables.add(paramVar);
 				fxScope.allocate(paramVar);
 			}
-			// to replace the inputs to the function type (with any defaults)
-			Type[] inputsReplacement = new Type[inputTypes.size()];
-			int i = 0;
-			for (; i < inputTypes.size(); ++i)
-				inputsReplacement[i] = inputTypes.get(i);
+			// We need to create a temporary array of the inputs just so that the value
+			//  of the function can check (since recursive calls may be made).
+			// We will need to update the type later with necessary extra parameters
+			//  so that it can be used by translation.
+			
+			ParameterType[] inputsReplacement = inputTypes.toArray(new ParameterType[inputTypes.size()]);
+			
 			// We may not have the type of the function yet, but we can assign the type
 			//  of the parameters. Set the type of this variable in case a recursive call
 			//  is made by the value
@@ -304,15 +315,22 @@ public class Checker {
 				//  value is one of its references (though we connect them from reference).
 				// This is because whenever the default value is used, the reference is created. If it is
 				//  never used, then the variable referenced may be safely deleted.
-				Value val = new Value(null, ref);
+				Value value = new Value(null, ref);
 				
-				Parameter newP = new Parameter(pVar.getName(), val);
-				pVar.source = newP;
-				newP.setSourced(pVar);
-				asgn.getParamList().add(newP);
+				ParameterType ptype = new ParameterType(pVar.getName(), pVar.type);
+				ptype.defaultValue = value;
+				ptype.implicit = true;
+				inputTypes.add(ptype);
+			}
+			// If the size of inputTypes changed (so there are some externalities to account for), then
+			//  we need to update the function type.
+			if (inputsReplacement.length != inputTypes.size()) {
+				inputsReplacement = inputTypes.toArray(new ParameterType[inputTypes.size()]);
+				var.getType().inputs = inputsReplacement;
 			}
 		}
-		return type;
+		
+		return null;
 	}
 	
 	protected Type check(TypeDefinition def, List<Frame> env) {
@@ -367,14 +385,15 @@ public class Checker {
 		ref.setLinkedTo(referenced);
 		
 		// We can know the type by the type of the variable linked to
-		if (referenced.getType() == null)
+		Type type = referenced.getType();
+		if (type == null)
 			throw new CheckException("Missing type in ", referenced, "!");
 		/*
 		 * This is the tricky part. We want to find the type of this reference, which is dependent
 		 * upon the type of the reference, and may also use the types given in the argument list.
 		 * Alternatively, if the referenced is undetermined, we will see if maybe it is a function.
 		 */
-		if (referenced.getType().isFunction()) {
+		if (type.isFunction()) {
 			// Just because this reference is a function type does *not* mean that it is being
 			//  used as a function call. We need to take a look at the next subexpression to see
 			//  the context of how this reference is being used.
@@ -438,12 +457,11 @@ public class Checker {
 			// We want to check that all the arguments given match with parameters of
 			//  the function, and that all necessary parameters of the function have
 			//  been satisfied by corresponding arguments.
-			Assignment source = (Assignment)referenced.getSource();
-			List<Parameter> paramList = source.getParamList();
+			ParameterType[] paramList = type.inputs;
 			// Furthermore, in translation to LLVM bytecode, we need all arguments to
 			//  be in the order of the parameters. Therefore, we can easily order
 			//  them here in checking.
-			LabeledValue[] sortedArgs = new LabeledValue[paramList.size()];
+			LabeledValue[] sortedArgs = new LabeledValue[paramList.length];
 			// Our first approach is to go through each argument sequentially and
 			//  place it if it has a label (we cannot place any positional arguments
 			//  until all labeled arguments have been placed since we don't know
@@ -453,14 +471,14 @@ public class Checker {
 			for (LabeledValue arg: ls.getArgs()) {
 				if (arg.getLabel() != null) {
 					int j = 0;
-					for (; j<paramList.size(); j++) {
-						Parameter p = paramList.get(j);
-						if (!p.getImplicit() && arg.getLabel().equals(p.getName()))
+					for (; j<paramList.length; j++) {
+						// TODO: should check type here
+						if (!paramList[j].implicit && arg.getLabel().equals(paramList[j].name))
 							break;
 					}
-					if (j == paramList.size()) // we could not find the specified parameter!
+					if (j == paramList.length) // we could not find the specified parameter!
 						throw new CheckException("Unrecognized parameter label \"", arg.getLabel(),
-								"\" for function \"", source.getVarName(),
+								"\" for function call \"", ref.getVarName(),
 								"\" requested by argument list of ", ref, "!");
 					if (sortedArgs[j] != null) // the parameter was already specified!
 						throw new CheckException("Duplicate parameter label \"", arg.getLabel(),
@@ -482,12 +500,12 @@ public class Checker {
 						k++;
 					// or if the parameter at t has the wrong argument (but has a default value)
 					// or if the parameter at t is implicit (and thus may receive no argument).
-					else if (paramList.get(k).getImplicit()) {
+					else if (paramList[k].implicit) {
 						// We need to copy from the default value to the argument list
 						// Unfortunately, we need to perform a deep clone of the default value.
 						//  If we merely copy the reference, then multiple uses of a reference
 						//  will not be correctly realized for optimization.
-						Value cloned = paramList.get(k).getDefaultVal().clone();
+						Value cloned = paramList[i].defaultValue.clone();
 						// We will have references add themselves appropriately on a clone, and
 						//  thus we don't need to check again.
 						sortedArgs[k] = new LabeledValue(cloned);
@@ -502,26 +520,25 @@ public class Checker {
 				}
 			}
 			// We must bring the sorted list to completion with any necessary default values
-			for (; k < paramList.size(); k++) {
+			for (; k < paramList.length; k++) {
 				if (sortedArgs[k] != null)
 					continue; // if this index was already used, skip it
-				Parameter p = paramList.get(k);
-				if (p.getDefaultVal() == null) {
+				if (paramList[k].defaultValue == null) {
 					StringBuffer missList = new StringBuffer("\"");
-					missList.append(p.getName());
+					missList.append(paramList[k].name);
 					missList.append("\"");
-					for (; k < paramList.size(); k++) {
-						if (sortedArgs[k] != null || paramList.get(k).getImplicit())
+					for (k += 1; k < paramList.length; k++) {
+						if (sortedArgs[k] != null || paramList[i].implicit)
 							continue;
 						missList.append(", \"");
-						missList.append(paramList.get(k).getName());
+						missList.append(paramList[i].name);
 						missList.append("\"");
 					}
 					throw new CheckException("Mismatch number of arguments in function call ",
 							ref, "! Call missing arguments for ", missList.toString(), ".");
 				}
 				// If there was a default value given, use it
-				sortedArgs[k] = new LabeledValue(p.getDefaultVal().clone());
+				sortedArgs[k] = new LabeledValue(paramList[k].defaultValue.clone());
 			}
 			// Finally, we update the argument list to match our new sorted list
 			ls.getArgs().clear();
@@ -534,14 +551,14 @@ public class Checker {
 			
 			// TODO: Here we assume that we are just doing a call, and thus the type of this
 			//  reference is merely the output type of the function
-			ref.setType(referenced.getType().output);
+			ref.setType(type.output);
 		}else if (referenced.getType() instanceof Undetermined) {
 			// could be a function or could be a regular variable
-			ref.setType(referenced.getType());
+			ref.setType(type);
 		}else {
 			// If it is not a function, this is the easy part. We can simply assign the type
 			//  of the reference to the same as the variable being referenced
-			ref.setType(referenced.getType());
+			ref.setType(type);
 		}
 		
 		return ref.getType();
@@ -589,16 +606,6 @@ public class Checker {
 			rhsType = rhsType.intersect(lhsType);
 		}
 		return rhsType;
-	}
-	
-	protected Type check(Parameter param, List<Frame> env) {
-		if (param.getDefaultVal() != null) {
-			Type checked = check(param.getDefaultVal(), env);
-			checked.setDefaulted(true);
-			return checked;
-		}
-		// Otherwise we are going to return undetermined
-		return null;
 	}
 	
 	protected Type check(Literal lit, List<Frame> env) {

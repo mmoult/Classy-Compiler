@@ -69,3 +69,11 @@ afternum:
   call i32 @puts(i8* %string)
   ret void
 }
+
+FUNCTION ..print {
+  %1 = bitcast i8* %int to %Int*
+  %2 = getelementptr inbounds %Int, %Int* %1, i32 0, i32 1
+  %3 = load i32, i32* %2, align 4
+  call void @printi(i32 %3)
+  ret void
+}

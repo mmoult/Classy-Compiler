@@ -1,5 +1,6 @@
 package classy.compiler.analyzing;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -12,23 +13,35 @@ public class Type {
 	public static Type Int = new Type("Int");
 	public static Type Bool = new Type("Bool");
 	
+	static {
+		// We need to give some attributes to our built-in types
+		Variable print = new Variable("..print", null, null);
+		print.type = new Type(null, new ParameterType("this", Type.Any));
+		Any.methods.put("..print", null);
+		//Variable print = new Variable()
+	}
+	
 	// Nominal type
 	protected String name = null;
 	protected Type[] parents;
 	protected Map<String, Variable> fields;
+	protected Map<String, Variable> methods;
 	// Function type
 	protected Type output = null;
-	protected Type[] inputs = null;
-	protected boolean defaulted = false;
+	protected ParameterType[] inputs = null;
 	
 	protected TypeDefinition source = null;
 	
 	private Type() {
 		// for creating any. All other types get a default parent in construction
 		name = "Any";
+		fields = new HashMap<>();
+		methods = new HashMap<>();
 	}
 	public Type(String name) {
 		this.name = name;
+		fields = new HashMap<>();
+		methods = new HashMap<>();
 		parents = new Type[]{Any};
 	}
 	public Type(String name, Type...parents) {
@@ -36,7 +49,7 @@ public class Type {
 		this.parents = parents;
 	}
 	
-	public Type(Type output, Type...inputs) {
+	public Type(Type output, ParameterType...inputs) {
 		this.output = output;
 		this.inputs = inputs;
 	}
@@ -63,18 +76,18 @@ public class Type {
 			//  be an instance with fewer arguments given.
 			int j = 0;
 			for (int i = 0; i < parent.inputs.length; i++) {
-				Type pi = parent.inputs[i];
-				Type ji = j < inputs.length? inputs[j] : null;
+				ParameterType pi = parent.inputs[i];
+				ParameterType ji = j < inputs.length? inputs[j] : null;
 				
 				if (ji == null) {
-					if (pi.getDefaulted()) {
+					if (pi.getDefaultValue() != null) {
 						j++;
 						continue;
 					}
 					return false;
-				}else if (ji.isa(pi)) {
+				}else if (ji.type.isa(pi.type)) {
 					j++; // accepted and move on to next
-				}else if (pi.getDefaulted()) {
+				}else if (pi.getDefaultValue() != null) {
 					// continue, but don't move on for this's inputs
 				}else
 					return false;
@@ -155,13 +168,6 @@ public class Type {
 		return null;
 	}
 	
-	public void setDefaulted(boolean defaulted) {
-		this.defaulted = defaulted;
-	}
-	public boolean getDefaulted() {
-		return defaulted;
-	}
-	
 	public boolean isFunction() {
 		return name == null;
 	}
@@ -214,8 +220,6 @@ public class Type {
 	@Override
 	public String toString() {
 		StringBuffer buf = new StringBuffer("type ");
-		if (defaulted)
-			buf.append("defaulted ");
 		if (!isFunction()) {
 			buf.append("\"");
 			buf.append(name);
@@ -223,7 +227,7 @@ public class Type {
 		}else {
 			buf.append("(");
 			boolean first = true;
-			for (Type input: inputs) {
+			for (ParameterType input: inputs) {
 				if (first)
 					first = false;
 				else

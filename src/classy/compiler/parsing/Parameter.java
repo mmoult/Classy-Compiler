@@ -10,14 +10,12 @@ public class Parameter extends NameBinding {
 	protected Token start;
 	protected String name;
 	protected Value defaultVal = null;
-	protected boolean implicit = false;
 	
 	public Parameter() {}
 	
 	public Parameter(String name, Value defaultVal) {
 		this.name = name;
 		this.defaultVal = defaultVal;
-		implicit = true;
 	}
 
 	@Override
@@ -59,10 +57,6 @@ public class Parameter extends NameBinding {
 	
 	public Value getDefaultVal() {
 		return defaultVal;
-	}
-	
-	public boolean getImplicit() {
-		return implicit;
 	}
 	
 	public static List<Parameter> parseParamList(TokenIterator it, int end) {
