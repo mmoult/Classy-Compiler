@@ -256,7 +256,7 @@ public class Translator {
 					boolean numbered = false;
 					while(++percentAt < str.length()) {
 						char c = str.charAt(percentAt);
-						if (c == ' ' || c == ',')
+						if (c == ' ' || c == ',' || c == ')')
 							break;
 						if (c >= '0' && c <= '9')
 							numbered = true;
@@ -341,16 +341,18 @@ public class Translator {
 			return retAt;
 		}else if (e instanceof If) {
 			If if_ = (If)e;
-			String retAt;
 			// We want to find the result of the condition, then jump from there
 			String cond = translate(if_.getCondition());
 			// TODO We need to get the boolean value from the return.
 			// We must find the boolean dynamically. There is no other way.
 			// For now we punt and assume the condition equals a Bool.
 			String tName = outTypes.get(Type.Bool).mangledName;
-			String fromBool = ""+varNum++;
-			lines.addLine("%", fromBool, " = getelementptr inbounds %", tName, ", %", tName, "* ", cond, ", i32 0, i32 1");
-			int loaded = load(fromBool, "i1", "4");
+			int toBool = varNum++;
+			// cast to what we need (bool) before use
+			lines.addLine("%" + toBool, " = bitcast ", voidPtr, " ", cond, " to %", tName, "*");
+			String inBool = "%"+varNum++;
+			lines.addLine(inBool, " = getelementptr inbounds %", tName, ", %", tName, "* %" + toBool, ", i32 0, i32 1");
+			int loaded = load(inBool, "i1", "4");
 			
 			//int compare = varNum++;
 			//lines.addLine("%", Integer.toString(compare), " = icmp eq i32 %", Integer.toString(loaded),", 0");
@@ -358,18 +360,21 @@ public class Translator {
 			String fbranch = "else" + Integer.toString(loaded);
 			String next = "next" + Integer.toString(loaded);
 			// branch to either the true or false case
-			lines.addLine("br i1 %", Integer.toString(loaded), ", label %", fbranch, ", label %", tbranch);
+			lines.addLine("br i1 %", Integer.toString(loaded), ", label %", tbranch, ", label %", fbranch);
 			lines.addLine();
 			
 			lines.addLabel(tbranch);
-			retAt = translate(if_.getThen());
+			String thenAt = translate(if_.getThen());
 			lines.addLine("br label %", next);
 			
 			lines.addLabel(fbranch);
-			retAt = translate(if_.getElse());
+			String elseAt = translate(if_.getElse());
 			lines.addLine("br label %", next);
 			
 			lines.addLabel(next);
+			String retAt = "%" + varNum++;
+			lines.addLine(retAt, " = phi ", voidPtr, " [ ", thenAt, ", %", tbranch,
+					" ], [ ", elseAt, ", %", fbranch, " ]");
 			return retAt;
 		}else if (e instanceof Literal) {
 			// Literals can live statically. We want to make it global so that it has
@@ -379,9 +384,10 @@ public class Translator {
 			return null;
 		}else if (e instanceof Assignment) {
 			Assignment asgn = (Assignment)e;
+			Variable asgnVar = asgn.getSourced();
 			
 			// First, we must find if this is a value assignment or a function assignment
-			if (asgn.getParamList() == null) {
+			if (!asgnVar.getType().isFunction()) {
 				//allocate(check(asgn.getValue()), name);
 				// We will get the location of the value at got
 				String got = translate(asgn.getValue());
@@ -435,7 +441,7 @@ public class Translator {
 			Reference ref = (Reference)e;
 			String name = varNames.get(ref.getLinkedTo());
 			if (name == null)
-				throw new RuntimeException("Reference encountered without a name in translation!");
+				throw new RuntimeException("Reference \"" + name + "\" encountered without a name in translation!");
 			if (ref.getArgument() == null) {
 				// Regular reference
 				return name;

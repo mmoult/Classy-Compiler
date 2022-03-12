@@ -18,12 +18,14 @@ import classy.compiler.analyzing.CheckException;
 
 class IntegrationTest {
 	
-	private void expectFromProgram(List<String> lines, int result) {
+	private void expectFromProgram(List<String> lines, Object result) {
 		Map<String, String> flags = new HashMap<>();
+		flags.put("O0", null);
 		new Classy("a.exe", lines, flags);
 		ProcessResult res = runProcess(List.of("a.exe"));
-		// If everything went well, then the result should be 6, with an exit code of 0
+		// If everything went well, then the exit code should be 0
 		assertEquals(0, res.exitCode);
+		// Also verify that we got the result we were looking for
 		assertEquals("\n"+result, res.output);
 		File file = new File("a.exe");
 		file.delete(); // dispose of the file we made
@@ -176,6 +178,27 @@ class IntegrationTest {
 			"subFive 8"
 		);
 		expectFromProgram(lines, 3);
+	}
+	
+	@Test
+	void dynamicIfTrue() {
+		List<String> lines = List.of(
+			"if true",
+			"	false",
+			"else",
+			"	5"
+		);
+		expectFromProgram(lines, "false");
+	}
+	@Test
+	void dynamicIfFalse() {
+		List<String> lines = List.of(
+			"if false",
+			"	false",
+			"else",
+			"	5"
+		);
+		expectFromProgram(lines, "5");
 	}
 	
 	protected ProcessResult runProcess(List<String> cmd) {

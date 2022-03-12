@@ -77,3 +77,21 @@ FUNCTION ..print {
   call void @printi(i32 %3)
   ret void
 }
+
+FUNCTION ..add(%this, %other) {
+  %1 = bitcast i8* %this to THIS*
+  %2 = getelementptr inbounds THIS, THIS* %1, i32 0, i32 1
+  %3 = icmp eq i32 %2 0
+  br i1 %3, label %thiszero, label %doadd
+thiszero:
+  ret i8* %other
+doadd:
+  %4 = bitcast i8* %this to THIS*
+  %5 = getelementptr inbounds THIS, THIS* %4, i32 0, i32 1
+  %6 = add nsw i32 %5, %2
+  %7 = CONSTRUCT
+  %8 = bitcast i8* %7 to THIS*
+  %9 = getelementptr inbounds THIS, THIS* %8, i32 0, i32 1
+  store i32 %6, i32* %9, align 4
+  ret i8* %7
+}

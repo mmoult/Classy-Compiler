@@ -317,6 +317,9 @@ public class Checker {
 				//  never used, then the variable referenced may be safely deleted.
 				Value value = new Value(null, ref);
 				
+				Parameter fParam = new Parameter(pVar.getName(), value);
+				fParam.setSourced(pVar);
+				asgn.getParamList().add(fParam);
 				ParameterType ptype = new ParameterType(pVar.getName(), pVar.type);
 				ptype.defaultValue = value;
 				ptype.implicit = true;
@@ -580,15 +583,12 @@ public class Checker {
 		Type thenType = check(ife.getThen(), env);
 		Type elseType = check(ife.getElse(), env);
 		// The less specific of the two is the type returned
-		Type less = expectType(thenType, elseType);
-		if (less != null)
-			return less;
-		less = expectType(elseType, thenType);
-		if (less != null)
-			return less;
-		
-		throw new CheckException("Types of then and else must match in conditional ", ife, "! Type ",
-				thenType, " and type ", elseType, " found instead.");
+		Type intersected = thenType.intersect(elseType);
+		if (intersected == null)
+			throw new CheckException("Types of then and else in conditional ", ife,
+					" must have a common ancestor! Type ",
+					thenType, " and type ", elseType, " found instead.");
+		return intersected;
 	}
 	
 	protected Type check(Operation op, List<Frame> env) {
