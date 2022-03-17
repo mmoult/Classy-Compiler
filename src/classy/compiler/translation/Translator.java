@@ -13,13 +13,17 @@ import java.util.Set;
 import classy.compiler.analyzing.ParameterType;
 import classy.compiler.analyzing.Type;
 import classy.compiler.analyzing.Variable;
+import classy.compiler.lexing.Token;
 import classy.compiler.parsing.Assignment;
+import classy.compiler.parsing.BinOp;
 import classy.compiler.parsing.Block;
 import classy.compiler.parsing.Expression;
 import classy.compiler.parsing.If;
 import classy.compiler.parsing.Literal;
+import classy.compiler.parsing.Operation;
 import classy.compiler.parsing.Parameter;
 import classy.compiler.parsing.Reference;
+import classy.compiler.parsing.Subexpression;
 import classy.compiler.parsing.Tuple;
 import classy.compiler.parsing.TypeDefinition;
 import classy.compiler.parsing.Value;
@@ -194,10 +198,9 @@ public class Translator {
 					// Here is where we want to print the dynamic dispatch part
 					// If the calling type does not match any of our options,
 					//  then it falls through to this implementation
-					String casted = "%" + varNum++;
-					lines.addLine(casted, " = bitcast i8* %this to %Any*");
-					String tagAt = "%" + varNum++;
-					lines.addLine(tagAt, " = getelementptr inbounds %Any, %Any* ", casted, ", i32 0, i32 0");
+					OutType oAny = outTypes.get(Type.Any);
+					String casted = "%" + bitCast("%this", oAny);
+					String tagAt = "%" + getElementPtr(casted, outTypes.get(Type.Any), 0);
 					String tag = "%" + load(tagAt, "i32", "4");
 					
 					for (Variable override : method.getOverrides()) {
@@ -346,12 +349,10 @@ public class Translator {
 			// TODO We need to get the boolean value from the return.
 			// We must find the boolean dynamically. There is no other way.
 			// For now we punt and assume the condition equals a Bool.
-			String tName = outTypes.get(Type.Bool).mangledName;
-			int toBool = varNum++;
-			// cast to what we need (bool) before use
-			lines.addLine("%" + toBool, " = bitcast ", voidPtr, " ", cond, " to %", tName, "*");
-			String inBool = "%"+varNum++;
-			lines.addLine(inBool, " = getelementptr inbounds %", tName, ", %", tName, "* %" + toBool, ", i32 0, i32 1");
+			OutType oBool = outTypes.get(Type.Bool);
+			// cast to what we need (Bool) before use
+			int toBool = bitCast(cond, oBool);
+			String inBool = "%" + getElementPtr("%"+toBool, oBool, 1);
 			int loaded = load(inBool, "i1", "4");
 			
 			//int compare = varNum++;
@@ -361,7 +362,6 @@ public class Translator {
 			String next = "next" + Integer.toString(loaded);
 			// branch to either the true or false case
 			lines.addLine("br i1 %", Integer.toString(loaded), ", label %", tbranch, ", label %", fbranch);
-			lines.addLine();
 			
 			lines.addLabel(tbranch);
 			String thenAt = translate(if_.getThen());
@@ -379,7 +379,7 @@ public class Translator {
 		}else if (e instanceof Literal) {
 			// Literals can live statically. We want to make it global so that it has
 			//  infinite scope, (since we don't know how it will be used).
-			return setGlobalLiteral((Literal)e);
+			return setGlobalLiteral((Literal)e, true);
 		} else if (e instanceof TypeDefinition) {
 			return null;
 		}else if (e instanceof Assignment) {
@@ -481,145 +481,179 @@ public class Translator {
 				lines.addLine(callComps);
 				return "%" + returned;
 			}
-		/*
-		}else if (e instanceof Operation) {
-			// We need to handle 'or' and 'and' first, since they could short circuit
-			if (e instanceof BinOp.And || e instanceof BinOp.Or) {
+		}
+		else if (e instanceof Operation) {
+			// Create an extension to literal for setting global results
+			class GlobalLiteral extends Literal {
+				public GlobalLiteral(Token.Type type, String value) {
+					super(null);
+					this.token = new Token(value, type, -1, -1);
+				}
+			}
+			
+			// Handle all operations that require boolean inputs (true or false)
+			//  These operations are "NOT" and the boolean (2 operands) "AND" and "OR".
+			if (e instanceof Operation.Not) {
+				Operation not = (Operation)e;
+				List<Subexpression> opRhs = not.getRHS().getSubexpressions();
+				if (opRhs.size() == 1 && opRhs.get(0) instanceof Literal) {
+					// We can optimize if it is an int literal by a direct output
+					String rhs = ((Literal)opRhs.get(0)).getToken().getValue();
+					// We want to find the truth of the literal
+					if (rhs.equals("true"))
+						return setGlobalLiteral(new GlobalLiteral(Token.Type.FALSE, "false"), true);
+					else
+						return setGlobalLiteral(new GlobalLiteral(Token.Type.TRUE, "true"), true);
+				}
+				String rhs = translate(not.getRHS());
+				
+				// If we got here, then we cannot know the result of this expression until runtime.
+				OutType oBool = outTypes.get(Type.Bool);
+				// cast to what we need (bool) before use
+				int toBoolR = bitCast(rhs, oBool);
+				String atBitR = "%" + getElementPtr("%"+toBoolR, oBool, 1);
+				int bitR = load(atBitR, "i1", "1");
+				
+				String res = "%" + varNum++;
+				lines.addLine(res, " = xor i1 %"+bitR, ", true");
+				// Lastly, we create a global that can receive this value
+				String lit = setGlobalValue(oBool, false);
+				String atLitVal = "%" + getElementPtr(lit, oBool, 1);
+				store(res, "i1", "1", atLitVal);
+				
+				return "%" + castVoidPtr(lit, oBool);
+				
+			}else if (e instanceof BinOp.And || e instanceof BinOp.Or) {
 				BinOp bop = (BinOp)e;
 				boolean bothNeeded = e instanceof BinOp.And;
-				// We evaluate the left first, and then we could short circuit and dodge the second
-				String lhs;
+				boolean firstTrue = false;
+				// We evaluate the left first, since we could short circuit and avoid evaluating right
 				List<Subexpression> opLhs = bop.getLHS().getSubexpressions();
+				String lhs = null;
 				if (opLhs.size() == 1 && opLhs.get(0) instanceof Literal) {
-					// We can optimize if it is an int literal by a direct output
+					// We can optimize if it is a literal by a direct output
 					lhs = ((Literal)opLhs.get(0)).getToken().getValue();
 					// We want to find the truth of the literal
-					boolean firstTrue = Integer.parseInt(lhs) != 0;
-					if (!bothNeeded && firstTrue) {
-						store("1", retAt);
-						return; // we can quit early, since the operation has been decided
-					}else if (bothNeeded && !firstTrue) {
-						store("0", retAt);
-						return; 
-					}
-				}else {
-					int la = allocate(check(bop.getLHS()));
-					translate(bop.getLHS(), la+"");
-					int ll = load(la+"");
-					lhs = "%" + ll;
+					firstTrue = lhs.equals("true");
+					
+					if (!bothNeeded && firstTrue)
+						// we can quit early, since the operation has been decided
+						return setGlobalLiteral(new GlobalLiteral(Token.Type.TRUE, "true"), true); 
+					else if (bothNeeded && !firstTrue)
+						return setGlobalLiteral(new GlobalLiteral(Token.Type.FALSE, "false"), true);
+				}
+				List<Subexpression> opRhs = bop.getLHS().getSubexpressions();
+				boolean secondTrue;
+				String rhs = null;
+				if (opRhs.size() == 1 && opRhs.get(0) instanceof Literal) {
+					// We can optimize if it is an int literal by a direct output
+					rhs = ((Literal)opRhs.get(0)).getToken().getValue();
+					// We want to find the truth of the literal
+					secondTrue = rhs.equals("true");
+					if ((bothNeeded && firstTrue && secondTrue) // both are literal true on an AND
+							|| (!bothNeeded && secondTrue))     // the second is true for an OR
+						return setGlobalLiteral(new GlobalLiteral(Token.Type.TRUE, "true"), true);
+					else if (bothNeeded && !secondTrue) // the second is literal false in an AND
+						return setGlobalLiteral(new GlobalLiteral(Token.Type.FALSE, "false"), true);
 				}
 				
-				// If we got here, then we cannot know the result of this expression until
-				// runtime. That means that we need a branching mechanism
-				int cmp = varNum++;
-				lines.addLine("%", Integer.toString(cmp), " = icmp ne i32 ", lhs, ", ", 0+"");
-				//br i1 %6, label %7, label %8
-				int truth = varNum++;
-				int falsity = varNum++;
-				lines.addLine("br i1 %", cmp+"", ", label %", truth+"", ", label %", falsity+"");
-				lines.addLabel(truth+"");
-				if (bothNeeded) {
-					// We must verify that rhs is also true
-					List<Subexpression> opRhs = bop.getLHS().getSubexpressions();
-					if (opRhs.size() == 1 && opRhs.get(0) instanceof Literal) {
-						// We can optimize if it is an int literal by a direct output
-						String rhs = ((Literal)opRhs.get(0)).getToken().getValue();
-						// We want to find the truth of the literal
-						boolean secondTrue = Integer.parseInt(rhs) != 0;
-						if (secondTrue)
-							store("1", retAt);
-					}else {
-						int ra = allocate(check(bop.getRHS()));
-						translate(bop.getRHS(), ra+"");
-						int rr = load(ra+"");
-						String rhs = "%" + rr;
-						// If rhs != 0, then the whole expression is true
-						int res = varNum++;
-						lines.addLine("%", Integer.toString(res), " = icmp ne i32 ", rhs, ", ", 0+"");
-						int expand = varNum++;
-						lines.addLine("%", Integer.toString(expand), " = zext i1 %", Integer.toString(res), " to i32");
-						store("%"+expand, retAt);
-					}
-				}else 
-					// We know the whole expression is true since we don't need both
-					store("1", retAt);
-				// Lastly, go to the continuation label
-				lines.addLine("br label %sc", cmp+"");
-				lines.addLabel(falsity+"");
-				if (bothNeeded)
-					// We already had one failure, so the whole expression is false
-					store("0", retAt);
-				else {
-					List<Subexpression> opRhs = bop.getLHS().getSubexpressions();
-					if (opRhs.size() == 1 && opRhs.get(0) instanceof Literal) {
-						// We can optimize if it is an int literal by a direct output
-						String rhs = ((Literal)opRhs.get(0)).getToken().getValue();
-						// We want to find the truth of the literal
-						boolean secondTrue = Integer.parseInt(rhs) != 0;
-						if (secondTrue)
-							store("1", retAt);
-					}else {
-						int ra = allocate(check(bop.getRHS()));
-						translate(bop.getRHS(), ra+"");
-						int rr = load(ra+"");
-						String rhs = "%" + rr;
-						// If rhs != 0, then the whole expression is true
-						int res = varNum++;
-						lines.addLine("%", Integer.toString(res), " = icmp ne i32 ", rhs, ", ", 0+"");
-						int expand = varNum++;
-						lines.addLine("%", Integer.toString(expand), " = zext i1 %", Integer.toString(res), " to i32");
-						store("%"+expand, retAt);
-					}
+				// If we got here, then we cannot know the result of this expression until runtime.
+				OutType oBool = outTypes.get(Type.Bool);
+				if (lhs == null) { // if lhs was not a literal, load it in
+					lhs = translate(bop.getLHS());
+					// cast to what we need (bool) before use
+					int toBoolL = bitCast(lhs, oBool);
+					String atBitL = "%" + getElementPtr("%"+toBoolL, oBool, 1);
+					lhs = "%" + load(atBitL, "i1", "1");
 				}
-				// Lastly, go to the continuation label
-				lines.addLine("br label %sc", cmp+"");
-				// Finally, put the continuation label
-				lines.addLabel("sc" + cmp);
-				return; // We don't want to go to regular processing after
+				if (rhs == null) { // if rhs was not a literal, load it in
+					rhs = translate(bop.getRHS());
+					// cast to what we need (bool) before use
+					int toBoolR = bitCast(rhs, oBool);
+					String atBitR = "%" + getElementPtr("%"+toBoolR, oBool, 1);
+					rhs = "%" + load(atBitR, "i1", "1");
+				}
+				
+				String res = "%" + varNum++;
+				String opcode = (bothNeeded? "and" : "or");
+				lines.addLine(res, " = ", opcode, " i1 ", lhs, ", ", rhs);
+				// Lastly, we create a global that can receive this value
+				String lit = setGlobalValue(oBool, false);
+				String atLitVal = "%" + getElementPtr(lit, oBool, 1);
+				store(res, "i1", "1", atLitVal);
+				
+				return "%" + castVoidPtr(lit, oBool);
 			}
 			
+			// All operations from here take integers as inputs, though some return an integer
+			//  and others return boolean.
 			Operation op = (Operation)e;
-			String rhs;
+			String rhs = null;
+			OutType oInt = outTypes.get(Type.Int);
 			List<Subexpression> opRhs = op.getRHS().getSubexpressions();
-			if (opRhs.size() == 1 && opRhs.get(0) instanceof Literal) {
+			if (opRhs.size() == 1 && opRhs.get(0) instanceof Literal)
 				// We can optimize if it is an int literal by a direct output
 				rhs = ((Literal)opRhs.get(0)).getToken().getValue();
-			}else {
-				int ra = allocate(check(op.getRHS()));
-				translate(op.getRHS(), ra+"");
-				int rl = load(ra+"");
-				rhs = "%" + rl;
+			else {
+				rhs = translate(op.getRHS());
+				// cast to what we need (int) before use
+				int toInt = bitCast(rhs, oInt);
+				String atBitR = "%" + getElementPtr("%"+toInt, oInt, 1);
+				rhs = "%" + load(atBitR, "i32", "4");
 			}
 			
-			if (op instanceof BinOp) {
+			String operation = null;
+			String lhs = null;
+			if (op instanceof Operation.Negation) {
+				operation = "sub nsw";
+				lhs = "0"; // negation is the same as subtracting from 0
+			}else {
 				BinOp bop = (BinOp)op;
-				String lhs;
+				// We can set up lhs, since it should be a number for all operations here
 				List<Subexpression> opLhs = bop.getLHS().getSubexpressions();
-				if (opLhs.size() == 1 && opLhs.get(0) instanceof Literal) {
+				if (opLhs.size() == 1 && opLhs.get(0) instanceof Literal)
 					// We can optimize if it is an int literal by a direct output
 					lhs = ((Literal)opLhs.get(0)).getToken().getValue();
-				}else {
-					int la = allocate(check(bop.getLHS()));
-					translate(bop.getLHS(), la+"");
-					int ll = load(la+"");
-					lhs = "%" + ll;
-				}
-				int result = varNum++;
-				String operation = "add";
-				boolean typical = true;
-				if (op instanceof BinOp.Addition)
-					operation = "add nsw";
-				else if (op instanceof BinOp.Subtraction)
-					operation = "sub nsw";
-				else if (op instanceof BinOp.Multiplication)
-					operation = "mul nsw";
-				else if (op instanceof BinOp.Division)
-					operation = "sdiv";
-				else if (op instanceof BinOp.Modulus)
-					operation = "srem";
 				else {
-					typical = false;
-					// All of these operations are binary that include an int extension
+					lhs = translate(bop.getLHS());
+					// cast to what we need (int) before use
+					int toInt = bitCast(lhs, oInt);
+					String atBit = "%" + getElementPtr("%"+toInt, oInt, 1);
+					lhs = "%" + load(atBit, "i32", "4");
+				}
+			}
+			
+			// First try to process all operations that will return a number
+			boolean returnsNumber = true;
+			if (operation == null) {
+				if (op instanceof BinOp.Addition) {
+					operation = "add nsw";
+					// x + 0 = 0 + x = x
+					if (lhs.equals("0") && rhs.startsWith("%"))
+						return rhs;
+					if (rhs.equals("0") && lhs.startsWith("%"))
+						return lhs;
+				}else if (op instanceof BinOp.Subtraction) {
+					operation = "sub nsw";
+					// x - 0 = x
+					if (rhs.equals("0") && lhs.startsWith("%"))
+						return lhs;
+				}else if (op instanceof BinOp.Multiplication) {
+					operation = "mul nsw";
+					// x * 1 = 1 * x = x
+					if (lhs.equals("1") && rhs.startsWith("%"))
+						return rhs;
+					if (rhs.equals("1") && lhs.startsWith("%"))
+						return lhs;
+				}else if (op instanceof BinOp.Division) {
+					operation = "sdiv";
+					// x / 1 = x
+					if (rhs.equals("1") && lhs.startsWith("%"))
+						return lhs;
+				}else if (op instanceof BinOp.Modulus) {
+					operation = "srem";
+				}else {
+					returnsNumber = false;
 					if (op instanceof BinOp.Equal)
 						operation = "eq";
 					else if (op instanceof BinOp.NEqual)
@@ -632,30 +666,31 @@ public class Translator {
 						operation = "sgt";
 					else if (op instanceof BinOp.GreaterEqual)
 						operation = "sge";
-					
-					int compare = result;
-					lines.addLine("%", Integer.toString(compare), " = icmp ", operation, " i32 ", lhs, ", ", rhs);
-					result = varNum++;
-					lines.addLine("%", Integer.toString(result), " = zext i1 %", Integer.toString(compare), " to i32");
+					else
+						throw new RuntimeException("Unknown operation: " + op +
+								" which cannot be translated!");
+					operation = "icmp " + operation;
 				}
-				
-				if (typical)
-					lines.addLine("%", Integer.toString(result), " = ", operation, " i32 ", lhs, ", ", rhs);
-				store("%"+result, retAt);
-			}else {
-				int result = varNum++;
-				if (op instanceof Operation.Negation)
-					// subtract the value from 0
-					lines.addLine("%", Integer.toString(result), " = ", "sub nsw i32 0, ", rhs);
-				else if (op instanceof Operation.Not) {
-					int compare = result;
-					result = varNum++;
-					lines.addLine("%", Integer.toString(compare), " = icmp eq i32 ", rhs, ", 0");
-					lines.addLine("%", Integer.toString(result), " = zext i1 %", Integer.toString(compare), " to i32");
-				}
-				store("%"+result, retAt);
 			}
-			*/
+			String result = "%" + varNum++;
+			lines.addLine(result, " = ", operation, " i32 ", lhs, ", ", rhs);
+			
+			if (returnsNumber) {
+				// Code for all operations that will return a number
+				// Now we can create a literal for holding numbers and return it
+				String lit = setGlobalValue(oInt, false);
+				String atNum = "%" + getElementPtr(lit, oInt, 1);
+				store(result, "i32", "4", atNum);
+				return "%" + castVoidPtr(lit, oInt);
+			}else {
+				// Code for all operations that will return a bool
+				// Now we can create a literal for holding numbers and return it
+				OutType oBool = outTypes.get(Type.Bool);
+				String lit = setGlobalValue(oBool, false);
+				String atBool = "%" + getElementPtr(lit, oBool, 1);
+				store(result, "i1", "1", atBool);
+				return "%" + castVoidPtr(lit, oBool);
+			}
 		}
 		// If it was not one of those types, through an error
 		throw new RuntimeException("Expression " + e.toString() + " could not be translated!");
@@ -676,49 +711,60 @@ public class Translator {
 		return fromGlobal;
 	}
 	
-	protected String setGlobalLiteral(Literal lit) {
-		String name = "@l" + globalNum++;
-		LinePlacer.State oldState = lines.getTop();
-		
-		// Switch on the type of literal we are allocating here
+	protected String setGlobalLiteral(Literal lit, boolean castGeneric) {
+		// We want to initialize the requested object. To do so, we need to know the
+		//  irName, alignment, and type for what was needed
 		Type litType;
 		String irName;
-		String alignment = "4";
+		String alignment;
 		switch (lit.getToken().getType()) {
 		case NUMBER:
 			litType = Type.Int;
 			irName = "i32";
+			alignment = "4";
 			break;
 		case TRUE:
 		case FALSE:
 			litType = Type.Bool;
 			irName = "i1";
+			alignment = "1";
 			break;
 		default:
 			throw new RuntimeException("Unrecognized literal type!");
 		}
-		
 		OutType outType = outTypes.get(litType);
-		String tName = outType.mangledName;
+		String name = setGlobal(outType);
+		
+		// Perform initialization!
+		// We assume here that the first index of all literal types is the actual value
+		//%5 = getelementptr inbounds %struct.Foo, %struct.Foo* %2, i32 0, i32 1
+		String atIndex = "%" + getElementPtr(name, outType, 1);
+		store(lit.getToken().getValue()+"", irName, alignment, atIndex);
+		
+		if (!castGeneric)
+			return name;
+		// For translation purposes, we make the type of the return generic
+		return "%" + castVoidPtr(name, outType);
+	}
+	protected String setGlobalValue(OutType type, boolean castGeneric) {
+		String name = setGlobal(type);
+		
+		if (!castGeneric)
+			return name;
+		// For translation purposes, we make the type of the return generic
+		return "%" + castVoidPtr(name, type);
+	}
+	protected String setGlobal(OutType type) {
+		String name = "@l" + globalNum++;
+		LinePlacer.State oldState = lines.getTop();
+		String tName = type.mangledName;
 		// Create the literal in global scope of outer
 		// global %Int zeroinitializer, align 8
 		lines.addLine(name, " = global %", tName, " zeroinitializer, align 8");
-		
-		// Initialize the literal before use
-		// go back to where we were
 		lines.revertState(oldState);
+		constructObj(type, name); // sets up its type id flag and what not
 		
-		constructObj(outType, name); // sets up its type id flag and what not
-		//%5 = getelementptr inbounds %struct.Foo, %struct.Foo* %2, i32 0, i32 1
-		String atIndex = "%" + varNum++;
-		// We assume here that the first index of all literal types is the actual value
-		lines.addLine(atIndex, " = getelementptr inbounds %", tName, ", %", tName, "* ", name, ", i32 0, i32 1");
-		store(lit.getToken().getValue()+"", irName, alignment, atIndex);
-		
-		// For translation purposes, we need to make the type of the return generic
-		String gName = "%" + varNum++;
-		lines.addLine(gName, " = bitcast %", tName, "* ", name, " to ", voidPtr);
-		return gName;
+		return name;
 	}
 	
 	protected int allocate(OutType t) {
@@ -743,6 +789,25 @@ public class Translator {
 	protected int load(String from, String type, String alignment) {
 		int retAt = varNum++;
 		lines.addLine("%", Integer.toString(retAt), " = load ", type, ", ", type, "* ", from, ", align ", alignment);
+		return retAt;
+	}
+	
+	protected int getElementPtr(String from, OutType type, int offs) {
+		int retAt = varNum++;
+		String tName = type.mangledName;
+		lines.addLine("%" + retAt, " = getelementptr inbounds %", tName, ", %", tName, "* ",
+				from, ", i32 0, i32 "+offs);
+		return retAt;
+	}
+	
+	protected int bitCast(String what, OutType type) {
+		int retAt = varNum++;
+		lines.addLine("%" + retAt, " = bitcast ", voidPtr, " ", what, " to %", type.mangledName, "*");
+		return retAt;
+	}
+	protected int castVoidPtr(String what, OutType from) {
+		int retAt = varNum++;
+		lines.addLine("%"+retAt, " = bitcast %", from.mangledName, "* ", what, " to ", voidPtr);
 		return retAt;
 	}
 	

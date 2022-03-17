@@ -593,17 +593,38 @@ public class Checker {
 	
 	protected Type check(Operation op, List<Frame> env) {
 		Type rhsType = check(op.getRHS(), env);
-		rhsType = expectType(Type.Int, rhsType);
+		if (op instanceof Operation.Not || op instanceof BinOp.And || op instanceof BinOp.Or)
+			rhsType = expectType(Type.Bool, rhsType);
+		else
+			rhsType = expectType(Type.Int, rhsType);
 		if (rhsType == null)
 			throw new CheckException("The type of the rhs on operation ", op, " must be a number! ",
 					rhsType, " found instead.");
 		if (op instanceof BinOp) {
 			Type lhsType = check(((BinOp)op).getLHS(), env);
-			lhsType = expectType(Type.Int, lhsType);
-			if (lhsType == null)
-				throw new CheckException("The type of the lhs on operation ", op, " must be a number! ",
-						lhsType, " found instead.");
-			rhsType = rhsType.intersect(lhsType);
+			// see if the operation is AND or OR, which both require boolean arguments
+			if (op instanceof BinOp.And || op instanceof BinOp.Or) {
+				lhsType = expectType(Type.Bool, lhsType);
+				if (lhsType == null)
+					throw new CheckException("The type of the lhs on operation ", op, " must be a bool! ",
+							lhsType, " found instead.");
+			}else {
+				// otherwise the operation takes int arguments
+				lhsType = expectType(Type.Int, lhsType);
+				if (lhsType == null)
+					throw new CheckException("The type of the lhs on operation ", op, " must be a number! ",
+							lhsType, " found instead.");
+				
+				// Some return bool and some return int
+				if (op instanceof BinOp.Equal ||
+					op instanceof BinOp.NEqual ||
+					op instanceof BinOp.LessThan ||
+					op instanceof BinOp.LessEqual ||
+					op instanceof BinOp.GreaterThan ||
+					op instanceof BinOp.GreaterEqual)
+					return Type.Bool;
+			}
+			//rhsType = rhsType.intersect(lhsType);
 		}
 		return rhsType;
 	}

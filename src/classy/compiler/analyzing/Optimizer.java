@@ -94,8 +94,7 @@ public class Optimizer {
 		Value rhs = op.getRHS();
 		optimize(rhs);
 		if (rhs.getSubexpressions().size() == 1 && rhs.getSubexpressions().get(0) instanceof Literal) {
-			int right = Integer.parseInt(((Literal)rhs.getSubexpressions().get(0)).getToken().getValue());
-			int result = 0;
+			String result = "";
 			
 			if (op instanceof BinOp) {
 				BinOp bop = (BinOp)op;
@@ -103,47 +102,64 @@ public class Optimizer {
 				optimize(lhs);
 				if (lhs.getSubexpressions().size() == 1 &&
 						lhs.getSubexpressions().get(0) instanceof Literal) {
-					int left = Integer.parseInt(((Literal)lhs.getSubexpressions().get(0)).getToken().getValue());
-
-					if (op instanceof BinOp.Addition)
-						result = left + right;
-					else if (op instanceof BinOp.Subtraction)
-						result = left - right;
-					else if (op instanceof BinOp.Multiplication)
-						result = left * right;
-					else if (op instanceof BinOp.Division)
-						result = left / right;
-					else if (op instanceof BinOp.Modulus)
-						result = left % right;
-					else if (op instanceof BinOp.Equal)
-						result = (left == right? 1: 0);
-					else if (op instanceof BinOp.NEqual)
-						result = (left == right? 0: 1);
-					else if (op instanceof BinOp.LessThan)
-						result = (left < right? 1: 0);
-					else if (op instanceof BinOp.LessEqual)
-						result = (left <= right? 1: 0);
-					else if (op instanceof BinOp.GreaterThan)
-						result = (left > right? 1: 0);
-					else if (op instanceof BinOp.GreaterEqual)
-						result = (left >= right? 1: 0);
-					else if (op instanceof BinOp.And)
-						result = left != 0? (right != 0? 1: 0): 0;
-					else if (op instanceof BinOp.Or)
-						result = left != 0? 1: (right != 0? 1: 0);
-					else
-						throw new CheckException("Unoptimized Operation Type! ", op);
+					
+					// Split by the numeric operations and the boolean ones
+					if (op instanceof BinOp.And || op instanceof BinOp.Or) {
+						boolean isAnd = op instanceof BinOp.And;
+						boolean left = ((Literal)lhs.getSubexpressions().get(0)).getToken().getValue().equals("true");
+						// short circuit
+						if (left && !isAnd)
+							result += "true";
+						if (!left && isAnd)
+							result += "false";
+						// Now we try the simplification with the other
+						boolean right = ((Literal)rhs.getSubexpressions().get(0)).getToken().getValue().equals("true");
+						if (isAnd)
+							result += (left && right);
+						else
+							result += (left || right);
+					}else {
+						int left = Integer.parseInt(((Literal)lhs.getSubexpressions().get(0)).getToken().getValue());
+						int right = Integer.parseInt(((Literal)rhs.getSubexpressions().get(0)).getToken().getValue());
+						
+						if (op instanceof BinOp.Addition)
+							result += left + right;
+						else if (op instanceof BinOp.Subtraction)
+							result += left - right;
+						else if (op instanceof BinOp.Multiplication)
+							result += left * right;
+						else if (op instanceof BinOp.Division)
+							result += left / right;
+						else if (op instanceof BinOp.Modulus)
+							result += left % right;
+						// Now for the boolean result operators
+						else if (op instanceof BinOp.Equal)
+							result += left == right;
+						else if (op instanceof BinOp.NEqual)
+							result += (left == right);
+						else if (op instanceof BinOp.LessThan)
+							result += (left < right);
+						else if (op instanceof BinOp.LessEqual)
+							result += (left <= right);
+						else if (op instanceof BinOp.GreaterThan)
+							result += (left > right);
+						else if (op instanceof BinOp.GreaterEqual)
+							result += (left >= right);
+						else 
+							throw new CheckException("Unoptimized Operation Type! ", op);
+					}
 				}else {
 					// Could not optimize since one side was not literal or something
 					return;
 				}
-			} else if (op instanceof Operation.Negation)
-				result = -right;
-			else if (op instanceof Operation.Not)
-				result = (right == 0? 1: 0);
-			else
+			} else if (op instanceof Operation.Negation) {
+				int right = Integer.parseInt(((Literal)rhs.getSubexpressions().get(0)).getToken().getValue());
+				result += -right;
+			} else if (op instanceof Operation.Not) {
+				boolean right = ((Literal)rhs.getSubexpressions().get(0)).getToken().getValue().equals("true");
+				result += (!right);
+			} else
 				throw new CheckException("Unoptimized Operation Type! ", op);
-			
 			
 			// If we made it here, we assume that the simplification was successful
 			// remove self from the parent and replace with a literal
@@ -157,7 +173,14 @@ public class Optimizer {
 						this.token = t;
 					}
 				}
-				Literal lit = new OpenLiteral(parent, new Token(""+result, Token.Type.NUMBER, -1, -1));					
+				Token newToken;
+				if (result.equals("true"))
+					newToken = new Token(result, Token.Type.TRUE, -1, -1);
+				else if (result.equals("false"))
+					newToken = new Token(result, Token.Type.FALSE, -1, -1);
+				else
+					newToken = new Token(result, Token.Type.NUMBER, -1, -1);
+				Literal lit = new OpenLiteral(parent, newToken);					
 				parent.getSubexpressions().add(found, lit);
 			}
 		}
