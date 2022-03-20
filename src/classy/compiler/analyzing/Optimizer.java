@@ -3,6 +3,7 @@ package classy.compiler.analyzing;
 import java.util.ArrayList;
 import java.util.List;
 
+import classy.compiler.Classy;
 import classy.compiler.lexing.Token;
 import classy.compiler.parsing.Assignment;
 import classy.compiler.parsing.BinOp;
@@ -59,7 +60,7 @@ public class Optimizer {
 			for (Variable var: removeList) {
 				// Cannot remove parameters
 				if (var.source instanceof Parameter) {
-					System.out.println("Warning: Unused " + var.source + ".");
+					Classy.warnings.add("Unused " + var.source + ".");
 					continue;
 				}
 				// We need to delete it at its source first
@@ -136,7 +137,7 @@ public class Optimizer {
 						else if (op instanceof BinOp.Equal)
 							result += left == right;
 						else if (op instanceof BinOp.NEqual)
-							result += (left == right);
+							result += (left != right);
 						else if (op instanceof BinOp.LessThan)
 							result += (left < right);
 						else if (op instanceof BinOp.LessEqual)
@@ -170,7 +171,7 @@ public class Optimizer {
 				class OpenLiteral extends Literal {
 					public OpenLiteral(Value parent, Token t) {
 						super(parent);
-						this.token = t;
+						this.startToken = t;
 					}
 				}
 				Token newToken;
@@ -215,9 +216,8 @@ public class Optimizer {
 		if (condList.size() == 1 && condList.get(0) instanceof Literal) {
 			// We can reduce depending on the truth of the literal
 			Literal cond = (Literal)condList.get(0);
-			int val = Integer.parseInt(cond.getToken().getValue());
 			Subexpression replaceWith;
-			if (val != 0)
+			if (cond.getToken().getValue().equals("true"))
 				// replace the entire if with then
 				replaceWith = if_.getThen();
 			else 

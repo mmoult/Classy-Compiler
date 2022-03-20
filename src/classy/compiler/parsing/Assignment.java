@@ -23,6 +23,7 @@ public class Assignment extends NameBinding {
 			throw new ParseException("Definition must begin with \"let\" keyword! ", it.token(), 
 					" found instead.");
 		int assignmentStart = it.index;
+		startToken = it.token();
 		it.next(end);
 		
 		if (!it.match(Token.Type.IDENTIFIER, end))
@@ -66,6 +67,22 @@ public class Assignment extends NameBinding {
 		value.parse(it, end);
 	}
 	
+	public String getVarName() {
+		return varName;
+	}
+	
+	public Value getValue() {
+		return value;
+	}
+	
+	public Block getParent() {
+		return parent;
+	}
+	
+	public List<Parameter> getParamList() {
+		return paramList;
+	}
+	
 	@Override
 	public String pretty(int indents) {
 		StringBuffer buf = new StringBuffer("let ");
@@ -86,21 +103,4 @@ public class Assignment extends NameBinding {
 		buf.append(value.pretty(indents+1));
 		return buf.toString();
 	}
-	
-	public String getVarName() {
-		return varName;
-	}
-	
-	public Value getValue() {
-		return value;
-	}
-	
-	public Block getParent() {
-		return parent;
-	}
-	
-	public List<Parameter> getParamList() {
-		return paramList;
-	}
-
 }

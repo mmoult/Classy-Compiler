@@ -353,29 +353,32 @@ public class Translator {
 			// cast to what we need (Bool) before use
 			int toBool = bitCast(cond, oBool);
 			String inBool = "%" + getElementPtr("%"+toBool, oBool, 1);
-			int loaded = load(inBool, "i1", "4");
+			String loaded = load(inBool, "i1", "4")+"";
 			
 			//int compare = varNum++;
 			//lines.addLine("%", Integer.toString(compare), " = icmp eq i32 %", Integer.toString(loaded),", 0");
-			String tbranch = "then" + Integer.toString(loaded);
-			String fbranch = "else" + Integer.toString(loaded);
-			String next = "next" + Integer.toString(loaded);
+			String tbranch = "then" + loaded;
+			String fbranch = "else" + loaded;
+			String next = "next" + loaded;
+			
+			// Phi's do not work well nested (since we would have to keep track of the most recent predecessor)
+			//  so instead, we allocate some space here for the return, which is saved to by the then or else.
+			String toReturn = "%" + allocate(voidPtr, "1");
 			// branch to either the true or false case
-			lines.addLine("br i1 %", Integer.toString(loaded), ", label %", tbranch, ", label %", fbranch);
+			lines.addLine("br i1 %", loaded, ", label %", tbranch, ", label %", fbranch);
 			
 			lines.addLabel(tbranch);
 			String thenAt = translate(if_.getThen());
+			store(thenAt, voidPtr, "1", toReturn);
 			lines.addLine("br label %", next);
 			
 			lines.addLabel(fbranch);
 			String elseAt = translate(if_.getElse());
+			store(elseAt, voidPtr, "1", toReturn);
 			lines.addLine("br label %", next);
 			
 			lines.addLabel(next);
-			String retAt = "%" + varNum++;
-			lines.addLine(retAt, " = phi ", voidPtr, " [ ", thenAt, ", %", tbranch,
-					" ], [ ", elseAt, ", %", fbranch, " ]");
-			return retAt;
+			return "%" + load(toReturn, voidPtr, "1");
 		}else if (e instanceof Literal) {
 			// Literals can live statically. We want to make it global so that it has
 			//  infinite scope, (since we don't know how it will be used).
@@ -487,7 +490,7 @@ public class Translator {
 			class GlobalLiteral extends Literal {
 				public GlobalLiteral(Token.Type type, String value) {
 					super(null);
-					this.token = new Token(value, type, -1, -1);
+					this.startToken = new Token(value, type, -1, -1);
 				}
 			}
 			
@@ -517,7 +520,8 @@ public class Translator {
 				String res = "%" + varNum++;
 				lines.addLine(res, " = xor i1 %"+bitR, ", true");
 				// Lastly, we create a global that can receive this value
-				String lit = setGlobalValue(oBool, false);
+				
+				String lit = newObject(oBool, false);
 				String atLitVal = "%" + getElementPtr(lit, oBool, 1);
 				store(res, "i1", "1", atLitVal);
 				
@@ -578,7 +582,7 @@ public class Translator {
 				String opcode = (bothNeeded? "and" : "or");
 				lines.addLine(res, " = ", opcode, " i1 ", lhs, ", ", rhs);
 				// Lastly, we create a global that can receive this value
-				String lit = setGlobalValue(oBool, false);
+				String lit = newObject(oBool, false);
 				String atLitVal = "%" + getElementPtr(lit, oBool, 1);
 				store(res, "i1", "1", atLitVal);
 				
@@ -678,7 +682,7 @@ public class Translator {
 			if (returnsNumber) {
 				// Code for all operations that will return a number
 				// Now we can create a literal for holding numbers and return it
-				String lit = setGlobalValue(oInt, false);
+				String lit = newObject(oInt, false);
 				String atNum = "%" + getElementPtr(lit, oInt, 1);
 				store(result, "i32", "4", atNum);
 				return "%" + castVoidPtr(lit, oInt);
@@ -686,7 +690,7 @@ public class Translator {
 				// Code for all operations that will return a bool
 				// Now we can create a literal for holding numbers and return it
 				OutType oBool = outTypes.get(Type.Bool);
-				String lit = setGlobalValue(oBool, false);
+				String lit = newObject(oBool, false);
 				String atBool = "%" + getElementPtr(lit, oBool, 1);
 				store(result, "i1", "1", atBool);
 				return "%" + castVoidPtr(lit, oBool);
@@ -709,6 +713,21 @@ public class Translator {
 		store(type.typeNum+"", tagType, "4", atIndex); // store the number as the tag id
 		
 		return fromGlobal;
+	}
+	
+	protected String newObject(OutType type, boolean castGeneric) {
+		String atLoc = "%" + varNum++;
+		lines.addLine(atLoc, " = call i8* @malloc(i32 "+type.size, ")");
+		String casted = "%" + bitCast(atLoc, type);
+		atLoc = constructObj(type, casted);
+		if (castGeneric)
+			return atLoc;
+		// For translation purposes, we make the type of the return generic
+		return casted;
+	}
+	
+	protected void deleteObject(String at, OutType type) {
+		
 	}
 	
 	protected String setGlobalLiteral(Literal lit, boolean castGeneric) {
@@ -746,14 +765,6 @@ public class Translator {
 		// For translation purposes, we make the type of the return generic
 		return "%" + castVoidPtr(name, outType);
 	}
-	protected String setGlobalValue(OutType type, boolean castGeneric) {
-		String name = setGlobal(type);
-		
-		if (!castGeneric)
-			return name;
-		// For translation purposes, we make the type of the return generic
-		return "%" + castVoidPtr(name, type);
-	}
 	protected String setGlobal(OutType type) {
 		String name = "@l" + globalNum++;
 		LinePlacer.State oldState = lines.getTop();
@@ -768,12 +779,12 @@ public class Translator {
 	}
 	
 	protected int allocate(OutType t) {
-		int retAt = varNum++;
-		allocate(t, retAt+"");
-		return retAt;
+		return allocate("%" + t.mangledName, t.alignment + "");
 	}
-	protected void allocate(OutType type, String saveAt) {
-		lines.addLine("%", saveAt, " = alloca %", type.mangledName, ", align ", ""+type.alignment);
+	protected int allocate(String type, String alignment) {
+		int retAt = varNum++;
+		lines.addLine("%" + retAt, " = alloca ", type, ", align ", alignment);
+		return retAt;
 	}
 	
 	protected void store(String what, OutType type, String at) {

@@ -1,6 +1,9 @@
 package classy.compiler.parsing;
 
+import classy.compiler.lexing.Token;
+
 public abstract class Expression {
+	protected Token startToken;
 	
 	/**
 	 * Parses important data for the expression from the token
@@ -24,6 +27,22 @@ public abstract class Expression {
 	 */
 	public String pretty(int indents) {
 		return toString();
+	}
+	
+	@Override
+	public String toString() {
+		StringBuffer buf = new StringBuffer();
+		buf.append(getExpressionName());
+		if (startToken != null) {			
+			buf.append(" \"");
+			buf.append(pretty(0));
+			buf.append("\" at ");
+			buf.append(startToken.getLocation());
+		}
+		return buf.toString();
+	}
+	public String getExpressionName() {
+		return getClass().getSimpleName();
 	}
 	
 	protected String getIndents(int indents) {

@@ -29,7 +29,7 @@ public class OptimizerTest {
 		//  the regular path. But we can skip lexing
 		List<Token> tokens = List.of(
 			mockToken(Token.Type.IF),
-			mockToken("0", Token.Type.NUMBER),
+			mockToken("false", Token.Type.FALSE),
 			mockToken(Token.Type.NEW_LINE),
 			mockToken("6", Token.Type.NUMBER),
 			mockToken(Token.Type.NEW_LINE),
@@ -48,7 +48,7 @@ public class OptimizerTest {
 		// Now we want to check that the then case works too
 		tokens = List.of(
 			mockToken(Token.Type.IF),
-			mockToken("1", Token.Type.NUMBER),
+			mockToken("true", Token.Type.TRUE),
 			mockToken(Token.Type.NEW_LINE),
 			mockToken("6", Token.Type.NUMBER),
 			mockToken(Token.Type.NEW_LINE),

@@ -20,7 +20,14 @@ class IntegrationTest {
 	
 	private void expectFromProgram(List<String> lines, Object result) {
 		Map<String, String> flags = new HashMap<>();
+		// Run the program in optimized and unoptimized
 		flags.put("O0", null);
+		expectFromProgram(lines, result, flags);
+		flags.clear();
+		expectFromProgram(lines, result, flags);
+	}
+	
+	private void expectFromProgram(List<String> lines, Object result, Map<String, String> flags) {
 		new Classy("a.exe", lines, flags);
 		ProcessResult res = runProcess(List.of("a.exe"));
 		// If everything went well, then the exit code should be 0
@@ -76,7 +83,7 @@ class IntegrationTest {
 		List<String> lines = List.of(
 			"3 - 6 / 2 <> 1"
 		);
-		expectFromProgram(lines, 1);
+		expectFromProgram(lines, true);
 	}
 	
 	@Test
@@ -84,7 +91,7 @@ class IntegrationTest {
 		List<String> lines = List.of(
 			"2 * (3 - 5) >= 0"
 		);
-		expectFromProgram(lines, 0);
+		expectFromProgram(lines, false);
 	}
 	
 	@Test
@@ -116,7 +123,7 @@ class IntegrationTest {
 			"	if max < 3",
 			"		0",
 			"	sum3or5(max - 1) + \\",
-			"	if !(max % 3) | !(max % 5)",
+			"	if (max % 3 == 0) | (max % 5 == 0)",
 			"		max",
 			"	else",
 			"		0",
@@ -215,7 +222,7 @@ class IntegrationTest {
 				output.append('\n');
 				output.append(line);
 			}
-			System.out.println(output.toString());
+			//System.out.println(output.toString());
 
 			int exitCode = process.waitFor();
 			return new ProcessResult(exitCode, output.toString());

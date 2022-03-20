@@ -82,9 +82,7 @@ public class Token {
 		String val = value.replace("\n", "\\n");
 		buf.append(val);
 		buf.append("\" at ");
-		buf.append(lineNo);
-		buf.append(":");
-		buf.append(colNo);
+		buf.append(getLocation());
 		buf.append(")");
 		return buf.toString();
 	}
@@ -92,6 +90,10 @@ public class Token {
 	public static boolean isNonSyntaxType(Type curr) {
 		return curr == Type.COMMENT || curr == Type.SEMICOLON || curr == Type.NEW_LINE ||
 				curr == Type.SPACE;
+	}
+	
+	public String getLocation() {
+		return lineNo + ":" + colNo;
 	}
 
 }

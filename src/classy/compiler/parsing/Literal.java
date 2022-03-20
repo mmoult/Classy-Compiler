@@ -3,7 +3,6 @@ package classy.compiler.parsing;
 import classy.compiler.lexing.Token;
 
 public class Literal extends Subexpression {
-	protected Token token;
 	
 	public Literal(Value parent) {
 		super(parent);
@@ -17,14 +16,14 @@ public class Literal extends Subexpression {
 		if (it.match(Token.Type.NUMBER, end) || it.match(Token.Type.TRUE, end) ||
 				it.match(Token.Type.FALSE, end)) {			
 			it.match(Token.Type.NUMBER, end);
-			token = it.token();
+			startToken = it.token();
 			it.next(end);
 		}else
 			throw new ParseException("Unknown literal token ", it.token(), "!");
 	}
 	
 	public Token getToken() {
-		return token;
+		return startToken;
 	}
 	
 	@Override
@@ -34,12 +33,12 @@ public class Literal extends Subexpression {
 	
 	@Override
 	public String pretty(int indents) {
-		return token.getValue();
+		return startToken.getValue();
 	}
 	
 	public Literal clone() {
 		Literal cloned = new Literal(parent);
-		cloned.token = token;
+		cloned.startToken = startToken;
 		return cloned;
 	}
 }

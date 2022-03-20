@@ -19,8 +19,9 @@ public abstract class Operation extends Subexpression {
 		// on the second pass through that we can look for the arguments. We cannot
 		// parse the arguments immediately since we have to obey order of operations.
 		if (!it.match(operation, end))
-			throw new ParseException("Unexpected token ", it.token(), " founnd where ", description(),
+			throw new ParseException("Unexpected token ", it.token(), " founnd where ",
 					" \"", operation, "\" expected!");
+		startToken = it.token();
 		it.next(end);
 	}
 
@@ -43,10 +44,6 @@ public abstract class Operation extends Subexpression {
 			this.rhs = new Value(null, rhs);
 		}else
 			throw new ParseException("Missing value after ", this, " in expression!");
-	}
-	
-	protected String description() {
-		return "operator";
 	}
 	
 	public static class Not extends Operation {

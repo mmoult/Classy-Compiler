@@ -261,11 +261,6 @@ public abstract class BinOp extends Operation {
 			buf.append(')');
 		return buf.toString();
 	}
-	
-	@Override
-	protected String description() {
-		return "binary operator";
-	}
 
 	public BinOp clone() {
 		BinOp outer = this;

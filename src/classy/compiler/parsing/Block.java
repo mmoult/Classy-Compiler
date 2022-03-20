@@ -35,6 +35,7 @@ public class Block extends Subexpression {
 			it.next(end);
 		}else
 			start = it.index;
+		startToken = it.token();
 		
 		int stop = it.find(Token.Type.CLOSE_BRACE, end);
 		if (stop == -1) {

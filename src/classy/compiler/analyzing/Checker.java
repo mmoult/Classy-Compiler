@@ -598,22 +598,24 @@ public class Checker {
 		else
 			rhsType = expectType(Type.Int, rhsType);
 		if (rhsType == null)
-			throw new CheckException("The type of the rhs on operation ", op, " must be a number! ",
-					rhsType, " found instead.");
+			throw new CheckException("The right expression (", op.getRHS(), ") of ",
+					op.getExpressionName(), " must be a number! ", check(op.getRHS()), " found instead.");
 		if (op instanceof BinOp) {
 			Type lhsType = check(((BinOp)op).getLHS(), env);
 			// see if the operation is AND or OR, which both require boolean arguments
 			if (op instanceof BinOp.And || op instanceof BinOp.Or) {
 				lhsType = expectType(Type.Bool, lhsType);
 				if (lhsType == null)
-					throw new CheckException("The type of the lhs on operation ", op, " must be a bool! ",
-							lhsType, " found instead.");
+					throw new CheckException("The left expression (", ((BinOp) op).getLHS(),
+							") of ", op.getExpressionName(), " must be a bool! ",
+							check(((BinOp)op).getLHS(), env), " found instead.");
 			}else {
 				// otherwise the operation takes int arguments
 				lhsType = expectType(Type.Int, lhsType);
 				if (lhsType == null)
-					throw new CheckException("The type of the lhs on operation ", op, " must be a number! ",
-							lhsType, " found instead.");
+					throw new CheckException("The left expression (", ((BinOp) op).getLHS(),
+							") of ", op.getExpressionName(), " must be a number! ",
+							check(((BinOp)op).getLHS(), env), " found instead.");
 				
 				// Some return bool and some return int
 				if (op instanceof BinOp.Equal ||

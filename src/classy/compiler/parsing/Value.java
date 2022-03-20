@@ -19,12 +19,15 @@ public class Value extends Subexpression {
 			sub.parent = this;
 			subexpressions.add(sub);
 		}
+		if (subexps.length > 0)
+			startToken = subexps[0].startToken;
 	}
 
 	@Override
 	public void parse(TokenIterator it, int end) {
 		// We can have many different subexpressions here.
 		boolean endReady = false;
+		startToken = it.token();
 		
 		while (it.index < end) {
 			int start = it.index;
@@ -177,15 +180,9 @@ public class Value extends Subexpression {
 		return subexpressions;
 	}
 	
-	public Value clone() {
-		Value cloned = new Value();
-		cloned.parent = parent;
-		for (Subexpression sub: subexpressions) {
-			Subexpression sclone = sub.clone();
-			sclone.parent = cloned;
-			cloned.subexpressions.add(sclone);
-		}
-		return cloned;
+	@Override
+	public boolean isLink() {
+		return false;
 	}
 	
 	@Override
@@ -208,10 +205,16 @@ public class Value extends Subexpression {
 			buf.append(")");
 		return buf.toString();
 	}
-
-	@Override
-	public boolean isLink() {
-		return false;
+	
+	public Value clone() {
+		Value cloned = new Value();
+		cloned.parent = parent;
+		for (Subexpression sub: subexpressions) {
+			Subexpression sclone = sub.clone();
+			sclone.parent = cloned;
+			cloned.subexpressions.add(sclone);
+		}
+		return cloned;
 	}
 	
 }

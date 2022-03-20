@@ -21,10 +21,13 @@ import classy.compiler.parsing.Value;
 import classy.compiler.translation.Translator;
 
 public class Classy {
+	private final static boolean DEBUG = false;
 	public static final String SAVE = "save";
 	public static final String VERBOSE = "verbose";
 	public static final String NO_OPT = "O0";
 	public static final String OUTPUT = "out";
+	
+	public static ArrayList<String> warnings = new ArrayList<>();
 	
 	public static void main(String args[]) {
 		String pathName = null;
@@ -95,7 +98,25 @@ public class Classy {
 		} else
 			moduleName = flags.get(OUTPUT);
 		
-		new Classy(moduleName, lines, flags);
+		try {
+			new Classy(moduleName, lines, flags);			
+		}catch(CompileException e) {
+			printWarnings();
+			if (DEBUG)
+				e.printStackTrace();
+			else {				
+				System.err.print("ERROR: ");
+				System.err.println(e.getMessage());
+			}
+			
+		}
+	}
+	
+	private static void printWarnings() {
+		for (String warn: warnings) {
+			System.err.print("Warning: ");
+			System.err.println(warn);
+		}
 	}
 	
 	private static int addFlag(String flag, int args, Map<String, String> flags, String[] cmd, int at) {
@@ -197,6 +218,7 @@ public class Classy {
 				}
 			}
 		}
+		printWarnings();
 		
 		if (fw != null) {
 			// Now we are going to want to compile to an executable.

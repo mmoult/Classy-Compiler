@@ -27,9 +27,12 @@ public class Tuple extends Subexpression {
 
 	@Override
 	public void parse(TokenIterator it, int end) {
-		if (it.index == end)
+		if (it.index == end) {
+			startToken = it.tokens.get(it.index - 1);
 			return; // Void argument list
+		}
 		
+		startToken = it.token();
 		if (it.match(Token.Type.VOID, end)) {
 			it.next(end);
 			return;
@@ -141,7 +144,6 @@ public class Tuple extends Subexpression {
 			buf.append(super.pretty(indents));
 			return buf.toString();
 		}
-		
 	}
 
 	@Override

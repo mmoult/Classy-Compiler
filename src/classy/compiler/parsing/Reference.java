@@ -19,7 +19,8 @@ public class Reference extends Subexpression {
 		if (!(it.match(Token.Type.IDENTIFIER, end) || it.match(Token.Type.SELF, end)))
 			throw new ParseException("Missing identifier token in reference! ", it.token(),
 					" found instead.");
-		this.varName = it.token().getValue();
+		startToken = it.token();
+		this.varName = startToken.getValue();
 		it.next(end);
 	}
 	

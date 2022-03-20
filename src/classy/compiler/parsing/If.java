@@ -16,7 +16,7 @@ public class If extends Subexpression {
 		if (!it.match(Token.Type.IF, end))
 			throw new ParseException("\"if\" token must be the first in an if statement! ", it.token(),
 					" found instead.");
-		//int start = it.index;
+		startToken = it.token();
 		it.next(end);
 		
 		// First we must encounter the condition. This condition is a value
@@ -59,6 +59,11 @@ public class If extends Subexpression {
 	}
 	
 	@Override
+	public boolean isLink() {
+		return false;
+	}
+	
+	@Override
 	public String pretty(int indents) {
 		StringBuffer buf = new StringBuffer("if ");
 		buf.append(condition.pretty(indents));
@@ -79,11 +84,6 @@ public class If extends Subexpression {
 			buf.append(else_.pretty(nIndents + 1));
 		}
 		return buf.toString();
-	}
-
-	@Override
-	public boolean isLink() {
-		return false;
 	}
 	
 	public If clone() {
