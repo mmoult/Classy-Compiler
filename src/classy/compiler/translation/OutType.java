@@ -7,8 +7,8 @@ public class OutType {
 	protected String mangledName;
 	protected int typeNum;
 	
-	//TODO make the size work
 	protected int alignment = 8;
+	//TODO make the size work
 	protected int size = 8;
 
 	public OutType(Type linked, String mangledName, int typeNum) {
@@ -16,4 +16,6 @@ public class OutType {
 		this.mangledName = mangledName;
 		this.typeNum = typeNum;
 	}
+	
+	
 }

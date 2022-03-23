@@ -10,15 +10,28 @@ public class Reference extends Subexpression {
 	protected Value arguments;
 	protected Type type;
 	
+	protected boolean member = false;
+	protected Value location; // where this is a reference in. Only applicable if member==true
+	
+	
 	public Reference(Value parent) {
 		super(parent);
 	}
 
 	@Override
 	public void parse(TokenIterator it, int end) {
-		if (!(it.match(Token.Type.IDENTIFIER, end) || it.match(Token.Type.SELF, end)))
-			throw new ParseException("Missing identifier token in reference! ", it.token(),
-					" found instead.");
+		// If this is a self reference, it cannot be a member
+		if (!it.match(Token.Type.SELF, end)) {
+			if (it.match(Token.Type.PERIOD, end)) {
+				member = true;
+				it.next(end);
+			}
+			
+			if (!(it.match(Token.Type.IDENTIFIER, end)))
+				throw new ParseException("Missing identifier token in reference! ", it.token(),
+						" found instead.");
+		}
+		
 		startToken = it.token();
 		this.varName = startToken.getValue();
 		it.next(end);
@@ -47,6 +60,19 @@ public class Reference extends Subexpression {
 		return linkedTo;
 	}
 	
+	public boolean isMember() {
+		return member;
+	}
+	public void setMember(boolean member) {
+		this.member = member;
+	}
+	public Value getLocation() {
+		return location;
+	}
+	public void setLocation(Value location) {
+		this.location = location;
+	}
+	
 	public void setArgument(Value val) {
 		this.arguments = val;
 	}
@@ -63,13 +89,23 @@ public class Reference extends Subexpression {
 	
 	@Override
 	public String pretty(int indents) {
-		if (arguments == null)
-			return varName;
-		else {
+		StringBuffer buf = new StringBuffer();
+		if (location != null && member)
+			buf.append(location.pretty(indents));
+		if (member)
+			buf.append('.');
+		buf.append(varName);
+		
+		if (arguments != null) {
 			if (arguments.getSubexpressions().get(0) instanceof Tuple)
-				return varName + arguments.pretty(indents);
-			return varName + "(" + arguments.pretty(indents) + ")";
+				buf.append(arguments.pretty(indents));
+			else {
+				buf.append('(');
+				buf.append(arguments.pretty(indents));
+				buf.append(')');
+			}
 		}
+		return buf.toString();
 	}
 	
 	public Reference clone() {
@@ -80,6 +116,9 @@ public class Reference extends Subexpression {
 		cloned.linkedTo = linkedTo; // referencing the same variable, so no cloning here
 		if (linkedTo != null)
 			linkedTo.addRef(cloned);
+		if (cloned.location != null)
+			cloned.location = location.clone();
+		cloned.member = member;
 		cloned.type = type;
 		return cloned;
 	}

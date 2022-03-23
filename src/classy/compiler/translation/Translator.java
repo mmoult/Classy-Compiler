@@ -38,7 +38,6 @@ public class Translator {
 	
 	protected Map<Variable, String> varNames;
 	protected Map<Type, OutType> outTypes;
-	//private Checker checker = new Checker();
 	Set<String> namesUsed = new HashSet<>();
 	
 	// to prevent magic numbers / strings
@@ -132,26 +131,29 @@ public class Translator {
 			for (int i=0; t.getParents() != null && i < t.getParents().length; i++) {
 				if (t.getParents()[i].equals(Type.Any))
 					continue;
-				typeLine.append(", %");
-				typeLine.append(outTypes.get(t.getParents()[i]).mangledName);
-				typeLine.append("*");
+				typeLine.append(", " + voidPtr);
 			}
 			// Now we append all the fields of this type
+			// TODO: we may want to reorder the fields for better spacing.
+			// Also, we want to keep track of the size of the struct
 			if (t.getFields() != null) {
 				Map<String, Variable> fields = t.getFields();
-				for (String fieldName: t.getFields().keySet()) {
-					typeLine.append(", %");
-					typeLine.append(outTypes.get(fields.get(fieldName).getType()).mangledName);
-					typeLine.append("*");
+				int size = fields.keySet().size();
+				type.size = 4 + 4*size;
+				for (int i=0; i<size; i++) {
+					// cannot make the type literal since it may receive a subtype
+					typeLine.append(", " + voidPtr);
 				}
 			}
 			// If the field is a built-in, then we have some fields to add directly
 			if (t.equals(Type.Int)) {
 				typeLine.append(", ");
 				typeLine.append("i32");
+				type.size = 8;
 			}else if (t.equals(Type.Bool)) {
 				typeLine.append(", ");
 				typeLine.append("i1");
+				type.size = 5;
 			}
 			typeLine.append(" }");
 			lines.addLine(typeLine.toString(), "; Type ID = ", type.typeNum+"");
@@ -346,9 +348,8 @@ public class Translator {
 			If if_ = (If)e;
 			// We want to find the result of the condition, then jump from there
 			String cond = translate(if_.getCondition());
-			// TODO We need to get the boolean value from the return.
 			// We must find the boolean dynamically. There is no other way.
-			// For now we punt and assume the condition equals a Bool.
+			// TODO For now we punt and assume the condition equals a Bool.
 			OutType oBool = outTypes.get(Type.Bool);
 			// cast to what we need (Bool) before use
 			int toBool = bitCast(cond, oBool);
@@ -384,6 +385,8 @@ public class Translator {
 			//  infinite scope, (since we don't know how it will be used).
 			return setGlobalLiteral((Literal)e, true);
 		} else if (e instanceof TypeDefinition) {
+			TypeDefinition def = (TypeDefinition)e;
+			
 			return null;
 		}else if (e instanceof Assignment) {
 			Assignment asgn = (Assignment)e;
@@ -726,8 +729,8 @@ public class Translator {
 		return casted;
 	}
 	
-	protected void deleteObject(String at, OutType type) {
-		
+	protected void deleteObject(String at) {
+		lines.addLine("call void @free(i8* ", at, ")");
 	}
 	
 	protected String setGlobalLiteral(Literal lit, boolean castGeneric) {
@@ -771,7 +774,7 @@ public class Translator {
 		String tName = type.mangledName;
 		// Create the literal in global scope of outer
 		// global %Int zeroinitializer, align 8
-		lines.addLine(name, " = global %", tName, " zeroinitializer, align 8");
+		lines.addLine(name, " = global %", tName, " zeroinitializer, align " + type.alignment);
 		lines.revertState(oldState);
 		constructObj(type, name); // sets up its type id flag and what not
 		

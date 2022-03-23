@@ -26,11 +26,10 @@ public class Value extends Subexpression {
 	@Override
 	public void parse(TokenIterator it, int end) {
 		// We can have many different subexpressions here.
-		boolean endReady = false;
+		boolean endReady = false; // we must see something before the value ends
 		startToken = it.token();
 		
 		while (it.index < end) {
-			int start = it.index;
 			Subexpression found;
 			
 			try {
@@ -109,19 +108,9 @@ public class Value extends Subexpression {
 				found.parse(it, end);
 			}
 			
-			if (!found.isLink() && endReady) {
-				// we don't want to add the found
-				it.index = start;
-				break;
-			}else {
-				subexpressions.add(found);
-				
-				if (!endReady)
-					endReady = true;
-				
-				if (found instanceof Operation || found instanceof Reference)
-					endReady = false;
-			}
+			subexpressions.add(found);
+			if (!endReady)
+				endReady = true;
 		}
 	}
 	
@@ -138,6 +127,7 @@ public class Value extends Subexpression {
 			return new If(this);
 		case IDENTIFIER:
 		case SELF:
+		case PERIOD:
 			return new Reference(this);
 		case PLUS:
 			return new BinOp.Addition(this);

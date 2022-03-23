@@ -18,14 +18,20 @@ public class Type {
 		Variable print = new Variable("..print", null, null);
 		print.type = new Type(null, new ParameterType("this", Type.Any));
 		Any.methods.put("..print", print);
+		
 		Variable printi = new Variable("..print", null, null);
 		printi.type = new Type(null, new ParameterType("this", Type.Int));
 		printi.setOverrides(print);
-		Int.methods.put("..print", printi);
+		Int.methods.put(printi.name, printi);
+		Variable iNew = new Variable("..newInt", null, null); // the constructor
+		Int.methods.put(iNew.name, iNew);
+		
 		Variable printb = new Variable("..print", null, null);
 		printb.type = new Type(null, new ParameterType("this", Type.Bool));
 		printb.setOverrides(print);
-		Bool.methods.put("..print", printb);
+		Bool.methods.put(printb.name, printb);
+		Variable bNew = new Variable("..newBool", null, null); // the constructor
+		Bool.methods.put(bNew.name, bNew);
 	}
 	
 	// Nominal type
@@ -44,6 +50,10 @@ public class Type {
 		name = "Any";
 		fields = new HashMap<>();
 		methods = new HashMap<>();
+		// put the constructor
+		Variable var = new Variable("..newAny", null, null);
+		var.type = new Type(this);
+		methods.put("..new"+name, var);
 	}
 	public Type(String name) {
 		this.name = name;

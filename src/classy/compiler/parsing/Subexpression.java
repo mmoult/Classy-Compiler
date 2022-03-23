@@ -10,10 +10,9 @@ public abstract class Subexpression extends Expression {
 	}
 
 	/**
-	 * Return whether this subexpression serves as a link that continues the
-	 * value. Alternatively thought of as whether this subexpression needs
-	 * chained components to be added. Or thought of as whether this
-	 * subexpression is an operation with precedence that needs to be resolved.
+	 * Return whether this subexpression needs chained components to be added.
+	 * Or thought of as whether this subexpression is an operation with precedence
+	 * that needs to be resolved.
 	 * @return a boolean to whether the subexpression is a link
 	 */
 	public abstract boolean isLink();

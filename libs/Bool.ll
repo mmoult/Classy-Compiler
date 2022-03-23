@@ -15,3 +15,11 @@ ifFalse:
   call i32 @puts(i8* %fs)
   ret void
 }
+
+FUNCTION ..newBool(%val) {
+  %1 = CONSTRUCT
+  %2 = getelementptr inbounds THIS, THIS* %1, i32 0, i32 1
+  store i32 %val, i32* %2, align 4
+  %3 = bitcast THIS* %2 to i8*
+  ret i8* %3
+}

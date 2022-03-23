@@ -55,8 +55,22 @@ public class TypeDefinition extends Expression {
 		}
 	}
 	
+	public void setSourced(Type t) {
+		this.sourced = t;
+	}
+	public Type getSourced() {
+		return sourced;
+	}
+	
 	public String getTypeName() {
 		return typeName;
+	}
+	
+	public List<Parameter> getFieldList() {
+		return fieldList;
+	}
+	public List<Parameter> getSupers() {
+		return supers;
 	}
 	
 	@Override

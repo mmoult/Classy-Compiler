@@ -7,3 +7,9 @@ declare void @free(i8*) nounwind
 FUNCTION ..print {
   ret void
 }
+
+FUNCTION ..super(%this, %wanted) {
+  ; Each class with any parents should ask if %wanted is the
+  ;  type of any supers, and return that super if so.
+  ret %this
+}

@@ -78,7 +78,7 @@ public class Checker {
 			Value val = (Value)e;
 			// We have to perform grouping now that we know the type of all identifiers
 			List<Subexpression> sub = val.getSubexpressions();
-			// Evaluate function application very first
+			// Evaluate function application and reference location very first
 			for (int i=0; i<sub.size(); i++) {
 				if (sub.get(i) instanceof Reference)
 					check((Reference)sub.get(i), env);
@@ -350,7 +350,29 @@ public class Checker {
 		// We want to create a new type from this definition
 		Type created = new Type(def.getTypeName());
 		types.add(created);
+		def.setSourced(created);
 		curScope.makeType(created);
+		// We also want to add all fields from this type definition
+		List<Parameter> fieldList = def.getFieldList();
+		ParameterType fields[] = new ParameterType[fieldList.size()];
+		for (int i=0; i < fieldList.size(); i++) {
+			Parameter p = fieldList.get(i);
+			Variable field = new Variable(p.getName(), p.getDefaultVal(), p);
+			// Try to set the type of the field
+			Type type = new Undetermined.Param(field);
+			if (p.getDefaultVal() != null)
+				type = check(p.getDefaultVal(), env);
+			if (p.getAnnotation() != null)
+				type = resolveAnnotation(p.getAnnotation(), type, env, p);
+			field.setType(type);
+			fields[i] = new ParameterType(p.getName(), type);
+			
+			created.fields.put(p.getName(), field);
+		}
+		// TODO create the constructor
+		Variable construct = new Variable("..new" + def.getTypeName(), null, null);
+		construct.type = new Type(created, fields); // give the params for the constructor type 
+		created.methods.put(construct.name, construct);
 		
 		return created;
 	}
@@ -360,30 +382,84 @@ public class Checker {
 			return ref.getType(); // do not re-check a reference
 		checkedRef.add(ref);
 		
+		// We need to find if this is a member or an independent reference.
+		//  If this was parsed with a dot, then we already know it should be a member.
+		//  We can know this should be a member if the previous subexpression in this
+		//   value takes members (not a function).
+		boolean member = false;
+		List<Subexpression> subexp = ref.getParent().getSubexpressions();
+		int refAt = subexp.indexOf(ref);
+		if (refAt == -1) 
+			throw new CheckException("Reference ", ref, " cannot be found in parents subexpressions!");
+		if (refAt > 0) {
+			Subexpression sub = subexp.get(refAt - 1);
+			if (sub instanceof Reference)
+				member = !((Reference)sub).getType().isFunction();
+			else
+				member = true; // there is something to take the type of
+		}
+		
+		if (!member && ref.isMember()) // If parsing told us this should be a member, but isn't, throw the error
+			throw new CheckException("Member found without any location! Some object-resulting expression must precede the member ",
+					ref, ".");
+
+		// Now things diverge greatly based on whether this is a member reference or not:
+		if (member) {
+			// If everything typed correctly, there should be exactly one subexpression before this
+			if (refAt - 1 >= 0) {
+				Subexpression sub = subexp.remove(refAt - 1);
+				Type parentType = check(sub, env);
+				// Now we must find some reference within
+				Variable linkedTo = parentType.fields.get(ref.getVarName()); // first try a field
+				if (linkedTo == null)
+					linkedTo = parentType.methods.get(ref.getVarName()); // next try a method
+				if (linkedTo == null) // could not find a valid member in the type
+					throw new CheckException("\"", ref.getVarName(), "\" from ", ref, " not a member of ", parentType, "!");
+				ref.setLinkedTo(linkedTo);
+				ref.setLocation(new Value(null, sub));
+				ref.setMember(true);
+				
+				Type linkType = linkedTo.getType();
+				if (linkType.isFunction())
+					handleFunctionRef(ref, linkType, env, refAt);
+				else
+					ref.setType(linkType);
+			}// else should never happen since the value checks that there is something before
+			
+			return ref.getType();
+		}
+		
+		// If we got here, then this is not a member
 		String name = ref.getVarName();
 		// We must find some variable that matches the name given
 		Variable referenced = null;
+		Type typed = null;
 		int i = env.size() - 1;
-		for (; i>=0 && referenced==null; i--) {
+		for (; i>=0 && referenced==null && typed==null; i--) {
 			Frame search = env.get(i);
 			if (name.equals("self") && search.functionName != null)
 				name = search.functionName; // define "self"
 			referenced = search.varDefined(name);
+			typed = search.typeDefined(name);
 		}
-		if (referenced == null) {
-			// If the name is "self", then the user tried to use self in a non-function definition
-			if (name.equals("self"))
-				throw new CheckException("\"self\" keyword may only be used in a function definition! Found ",
-						ref, ".");
-			// otherwise we just have a regular undeclared variable issue
-			throw new CheckException("Reference ", ref, " to an undeclared variable \"", name, "\"!");
-		}
-		// Add this ref as an externality for all passed function scopes
-		for (int j = i + 2; j < env.size(); j++) {
-			if (env.get(j).isFunction())
-				env.get(j).addExternality(ref);
-		}
-		
+		if (typed != null) {
+			// if we found the type, then we have a constructor call here
+			referenced = typed.methods.get("..new" + typed.name);
+		}else {			
+			if (referenced == null) {			
+				// If the name is "self", then the user tried to use self in a non-function definition
+				if (name.equals("self"))
+					throw new CheckException("\"self\" keyword may only be used in a function definition! Found ",
+							ref, ".");
+				// otherwise we just have a regular undeclared variable issue
+				throw new CheckException("Reference ", ref, " to an undeclared variable \"", name, "\"!");
+			}
+			// Add this ref as an externality for all passed function scopes
+			for (int j = i + 2; j < env.size(); j++) {
+				if (env.get(j).isFunction())
+					env.get(j).addExternality(ref);
+			}
+		}		
 		referenced.addRef(ref);
 		ref.setLinkedTo(referenced);
 		
@@ -397,164 +473,7 @@ public class Checker {
 		 * Alternatively, if the referenced is undetermined, we will see if maybe it is a function.
 		 */
 		if (type.isFunction()) {
-			// Just because this reference is a function type does *not* mean that it is being
-			//  used as a function call. We need to take a look at the next subexpression to see
-			//  the context of how this reference is being used.
-			
-			// We need to connect the next token to the ref
-			List<Subexpression> subexp = ref.getParent().getSubexpressions();
-			int refAt = subexp.indexOf(ref);
-			if (refAt == -1) 
-				throw new CheckException("Reference ", ref, " cannot be found in parents subexpressions!");
-			if (refAt + 1 >= subexp.size()) {
-				ref.setType(referenced.getType());
-				return referenced.getType(); // not using a call since there are no arguments.
-			}
-			// If the next subexpression is not argument-allowable, then we know this isn't a call
-			
-			// Check all arguments to this reference
-			// We don't want to check a tuple by itself, since it cannot occur by
-			//  itself, and an error should be thrown if it is.
-			if (!(subexp.get(refAt + 1) instanceof Tuple)) {
-				Subexpression next = subexp.get(refAt + 1);
-				if (next instanceof BinOp) // operations are not possible on function types 
-					throw new CheckException("Operation ", next,
-							" may not be called on function-typed reference ", ref, "!");
-				
-				// If all the checks did not flag this, then it must be a call.
-				check(subexp.get(refAt + 1), env);
-			}else {
-				// Check all the arguments in the list
-				Tuple ls = (Tuple)subexp.get(refAt + 1);
-				for (Value arg: ls.getArgs())
-					check(arg, env);
-			}
-			Subexpression argLs = subexp.remove(refAt + 1);
-			// We want to get the argument list for this reference. If the argument
-			//  is not an argument list (which is common for single-argument functions),
-			//  then we want to wrap it as an argument list for uniformity.
-			Tuple ls = null;
-			if (argLs instanceof Value) {
-				Value foundVal = (Value)argLs;
-				// There should only be one subexpression in the value at this point,
-				//  since it has necessarily been checked (and checking requires that
-				//  there is only 1 resulting subexpression).
-				// Thus, we extricate the subexpression to make the argument list.
-				// It turns out that an argument list does *not* result in a value,
-				//  so in checking, we should validate that the value is not just an
-				//  argument list
-				if (foundVal.getSubexpressions().size() == 1)
-					argLs = foundVal.getSubexpressions().get(0);
-			}
-			if (argLs instanceof Tuple)
-				ls = (Tuple)argLs;
-			else {
-				ls = new Tuple(argLs.getParent());
-				ls.addArg(new LabeledValue(new Value(null, argLs)));
-			}
-			
-			// We want to type check on the number of arguments the function needs.
-			// However, this gets more complicated since there may be default values
-			//  specified by the function.
-			
-			// We want to check that all the arguments given match with parameters of
-			//  the function, and that all necessary parameters of the function have
-			//  been satisfied by corresponding arguments.
-			ParameterType[] paramList = type.inputs;
-			// Furthermore, in translation to LLVM bytecode, we need all arguments to
-			//  be in the order of the parameters. Therefore, we can easily order
-			//  them here in checking.
-			LabeledValue[] sortedArgs = new LabeledValue[paramList.length];
-			// Our first approach is to go through each argument sequentially and
-			//  place it if it has a label (we cannot place any positional arguments
-			//  until all labeled arguments have been placed since we don't know
-			//  beforehand since labeled arguments do not have to be in order.
-			// If a label has been provided for an argument, it *must* match one of
-			//  the parameter names in the called function.
-			for (LabeledValue arg: ls.getArgs()) {
-				if (arg.getLabel() != null) {
-					int j = 0;
-					for (; j<paramList.length; j++) {
-						// TODO: should check type here
-						if (!paramList[j].implicit && arg.getLabel().equals(paramList[j].name))
-							break;
-					}
-					if (j == paramList.length) // we could not find the specified parameter!
-						throw new CheckException("Unrecognized parameter label \"", arg.getLabel(),
-								"\" for function call \"", ref.getVarName(),
-								"\" requested by argument list of ", ref, "!");
-					if (sortedArgs[j] != null) // the parameter was already specified!
-						throw new CheckException("Duplicate parameter label \"", arg.getLabel(),
-								" requested by argument list of ", ref, "!");
-					sortedArgs[j] = arg; // set this argument in its place
-				}
-			}
-			// Now we must iterate over the list again to get all positional arguments
-			int k = 0; // where to place the next argument in the sorted list
-			int j = 0; // how far we are in the given argument list
-			for (; j < ls.getArgs().size(); j++) {
-				LabeledValue arg = ls.getArgs().get(j);
-				if (arg.getLabel() != null)
-					continue;
-				// We have an argument to place...
-				while (true) {
-					// Check if there is already a sorted argument at t
-					if (sortedArgs[k] != null)
-						k++;
-					// or if the parameter at t has the wrong argument (but has a default value)
-					// or if the parameter at t is implicit (and thus may receive no argument).
-					else if (paramList[k].implicit) {
-						// We need to copy from the default value to the argument list
-						// Unfortunately, we need to perform a deep clone of the default value.
-						//  If we merely copy the reference, then multiple uses of a reference
-						//  will not be correctly realized for optimization.
-						Value cloned = paramList[i].defaultValue.clone();
-						// We will have references add themselves appropriately on a clone, and
-						//  thus we don't need to check again.
-						sortedArgs[k] = new LabeledValue(cloned);
-						
-					}else if (k >= sortedArgs.length)
-						throw new CheckException("Mismatch number of arguments in function call ",
-								ref, "! ", (ls.getArgs().size() - j)+"", " too many arguments given.");
-					else {
-						sortedArgs[k++] = arg;
-						break; // we placed it, so we can break out							
-					}
-				}
-			}
-			// We must bring the sorted list to completion with any necessary default values
-			for (; k < paramList.length; k++) {
-				if (sortedArgs[k] != null)
-					continue; // if this index was already used, skip it
-				if (paramList[k].defaultValue == null) {
-					StringBuffer missList = new StringBuffer("\"");
-					missList.append(paramList[k].name);
-					missList.append("\"");
-					for (k += 1; k < paramList.length; k++) {
-						if (sortedArgs[k] != null || paramList[i].implicit)
-							continue;
-						missList.append(", \"");
-						missList.append(paramList[i].name);
-						missList.append("\"");
-					}
-					throw new CheckException("Mismatch number of arguments in function call ",
-							ref, "! Call missing arguments for ", missList.toString(), ".");
-				}
-				// If there was a default value given, use it
-				sortedArgs[k] = new LabeledValue(paramList[k].defaultValue.clone());
-			}
-			// Finally, we update the argument list to match our new sorted list
-			ls.getArgs().clear();
-			for (LabeledValue arg: sortedArgs)
-				ls.addArg(arg);
-			
-			// Set the reference's argument value
-			Value args = new Value(null, ls);
-			ref.setArgument(args);
-			
-			// TODO: Here we assume that we are just doing a call, and thus the type of this
-			//  reference is merely the output type of the function
-			ref.setType(type.output);
+			handleFunctionRef(ref, type, env, refAt);
 		}else if (referenced.getType() instanceof Undetermined) {
 			// could be a function or could be a regular variable
 			ref.setType(type);
@@ -565,6 +484,167 @@ public class Checker {
 		}
 		
 		return ref.getType();
+	}
+	protected void handleFunctionRef(Reference ref, Type type, List<Frame> env, int refAt) {
+		// Just because this reference is a function type does *not* mean that it is being
+		//  used as a function call. We need to take a look at the next subexpression to see
+		//  the context of how this reference is being used.
+		
+		// We need to connect the next token to the ref
+		List<Subexpression> subexp = ref.getParent().getSubexpressions();
+		if (refAt == -1) 
+			throw new CheckException("Reference ", ref, " cannot be found in parents subexpressions!");
+		if (refAt + 1 >= subexp.size()) {
+			ref.setType(type);
+			return; // not using a call since there are no arguments.
+		}
+		// If the next subexpression is not argument-allowable, then we know this isn't a call
+		
+		// Check all arguments to this reference
+		// We don't want to check a tuple by itself, since it cannot occur by
+		//  itself, and an error should be thrown if it is.
+		if (!(subexp.get(refAt + 1) instanceof Tuple)) {
+			Subexpression next = subexp.get(refAt + 1);
+			if (next instanceof BinOp) // operations are not possible on function types 
+				throw new CheckException("Operation ", next,
+						" may not be called on function-typed reference ", ref, "!");
+			
+			// If all the checks did not flag this, then it must be a call.
+			check(subexp.get(refAt + 1), env);
+		}else {
+			// Check all the arguments in the list
+			Tuple ls = (Tuple)subexp.get(refAt + 1);
+			for (Value arg: ls.getArgs())
+				check(arg, env);
+		}
+		Subexpression argLs = subexp.remove(refAt + 1);
+		// We want to get the argument list for this reference. If the argument
+		//  is not an argument list (which is common for single-argument functions),
+		//  then we want to wrap it as an argument list for uniformity.
+		Tuple ls = null;
+		if (argLs instanceof Value) {
+			Value foundVal = (Value)argLs;
+			// There should only be one subexpression in the value at this point,
+			//  since it has necessarily been checked (and checking requires that
+			//  there is only 1 resulting subexpression).
+			// Thus, we extricate the subexpression to make the argument list.
+			// It turns out that an argument list does *not* result in a value,
+			//  so in checking, we should validate that the value is not just an
+			//  argument list
+			if (foundVal.getSubexpressions().size() == 1)
+				argLs = foundVal.getSubexpressions().get(0);
+		}
+		if (argLs instanceof Tuple)
+			ls = (Tuple)argLs;
+		else {
+			ls = new Tuple(argLs.getParent());
+			ls.addArg(new LabeledValue(new Value(null, argLs)));
+		}
+		
+		// We want to type check on the number of arguments the function needs.
+		// However, this gets more complicated since there may be default values
+		//  specified by the function.
+		
+		// We want to check that all the arguments given match with parameters of
+		//  the function, and that all necessary parameters of the function have
+		//  been satisfied by corresponding arguments.
+		ParameterType[] paramList = type.inputs;
+		// Furthermore, in translation to LLVM bytecode, we need all arguments to
+		//  be in the order of the parameters. Therefore, we can easily order
+		//  them here in checking.
+		LabeledValue[] sortedArgs = new LabeledValue[paramList.length];
+		// Our first approach is to go through each argument sequentially and
+		//  place it if it has a label (we cannot place any positional arguments
+		//  until all labeled arguments have been placed since we don't know
+		//  beforehand since labeled arguments do not have to be in order.
+		// If a label has been provided for an argument, it *must* match one of
+		//  the parameter names in the called function.
+		for (LabeledValue arg: ls.getArgs()) {
+			if (arg.getLabel() != null) {
+				int j = 0;
+				for (; j<paramList.length; j++) {
+					// TODO: should check type here
+					if (!paramList[j].implicit && arg.getLabel().equals(paramList[j].name))
+						break;
+				}
+				if (j == paramList.length) // we could not find the specified parameter!
+					throw new CheckException("Unrecognized parameter label \"", arg.getLabel(),
+							"\" for function call \"", ref.getVarName(),
+							"\" requested by argument list of ", ref, "!");
+				if (sortedArgs[j] != null) // the parameter was already specified!
+					throw new CheckException("Duplicate parameter label \"", arg.getLabel(),
+							" requested by argument list of ", ref, "!");
+				sortedArgs[j] = arg; // set this argument in its place
+			}
+		}
+		// Now we must iterate over the list again to get all positional arguments
+		int k = 0; // where to place the next argument in the sorted list
+		int j = 0; // how far we are in the given argument list
+		for (; j < ls.getArgs().size(); j++) {
+			LabeledValue arg = ls.getArgs().get(j);
+			if (arg.getLabel() != null) // this arg already placed since it is positional
+				continue;
+			// We have an argument to place...
+			while (true) {
+				if (k >= sortedArgs.length)
+					throw new CheckException("Mismatch number of arguments in function call ",
+							ref, "! ", (ls.getArgs().size() - j)+"", " too many arguments given.");
+				
+				// Check if there is already a positional argument at t
+				if (sortedArgs[k] != null)
+					k++;
+				// or if the parameter at t has the wrong argument type (but has a default value)
+				
+				// or if the parameter at t is implicit (and thus may receive no argument).
+				else if (paramList[k].implicit) {
+					// We need to copy from the default value to the argument list
+					// Unfortunately, we need to perform a deep clone of the default value.
+					//  If we merely copy the reference, then multiple uses of a reference
+					//  will not be correctly realized for optimization.
+					Value cloned = paramList[k].defaultValue.clone();
+					// We will have references add themselves appropriately on a clone, and
+					//  thus we don't need to check again.
+					sortedArgs[k] = new LabeledValue(cloned);
+					
+				}else {
+					sortedArgs[k++] = arg;
+					break; // we placed it, so we can break out							
+				}
+			}
+		}
+		// We must bring the sorted list to completion with any necessary default values
+		for (; k < paramList.length; k++) {
+			if (sortedArgs[k] != null)
+				continue; // if this index was already used, skip it
+			if (paramList[k].defaultValue == null) {
+				StringBuffer missList = new StringBuffer("\"");
+				missList.append(paramList[k].name);
+				missList.append("\"");
+				for (k += 1; k < paramList.length; k++) {
+					if (sortedArgs[k] != null || paramList[k].implicit)
+						continue;
+					missList.append(", \"");
+					missList.append(paramList[j].name);
+					missList.append("\"");
+				}
+				throw new CheckException("Mismatch number of arguments in function call ",
+						ref, "! Call missing arguments for ", missList.toString(), ".");
+			}
+			// If there was a default value given, use it
+			sortedArgs[k] = new LabeledValue(paramList[k].defaultValue.clone());
+		}
+		// Finally, we update the argument list to match our new sorted list
+		ls.getArgs().clear();
+		for (LabeledValue arg: sortedArgs)
+			ls.addArg(arg);
+		
+		// Set the reference's argument value
+		Value args = new Value(null, ls);
+		ref.setArgument(args);
+		
+		// TODO: Here we assume that we are just doing a call, and thus the type of this
+		//  reference is merely the output type of the function
+		ref.setType(type.output);
 	}
 	
 	protected Type check(Block block, List<Frame> env) {

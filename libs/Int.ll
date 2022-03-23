@@ -90,8 +90,8 @@ doadd:
   %5 = getelementptr inbounds THIS, THIS* %4, i32 0, i32 1
   %6 = add nsw i32 %5, %2
   %7 = CONSTRUCT
-  %8 = bitcast i8* %7 to THIS*
-  %9 = getelementptr inbounds THIS, THIS* %8, i32 0, i32 1
+  %9 = getelementptr inbounds THIS, THIS* %7, i32 0, i32 1
   store i32 %6, i32* %9, align 4
-  ret i8* %7
+  %10 = bitcast THIS* %9 to i8*
+  ret i8* %10
 }
