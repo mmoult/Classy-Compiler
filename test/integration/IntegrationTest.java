@@ -208,6 +208,30 @@ class IntegrationTest {
 		expectFromProgram(lines, "5");
 	}
 	
+	@Test
+	void userTypeFunction() {
+		List<String> lines = List.of(
+			"type Foo = (num: Int, used: Bool)",
+			"let foo = Foo (1, true)",
+
+			"let getNum(foo: Foo) = foo num",
+
+			"getNum foo"
+		);
+		expectFromProgram(lines, "1");
+	}
+	
+	@Test
+	void composedType() {
+		List<String> lines = List.of(
+			"type Foo = num: Int",
+			"type Bar = foo: Foo",
+			"let myBar = Bar (Foo 8)",
+			"myBar foo num"
+		);
+		expectFromProgram(lines, "8");
+	}
+	
 	protected ProcessResult runProcess(List<String> cmd) {
 		ProcessBuilder processBuilder = new ProcessBuilder(cmd);
 		processBuilder.redirectErrorStream(true);

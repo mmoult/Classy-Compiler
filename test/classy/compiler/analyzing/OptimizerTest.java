@@ -1,9 +1,11 @@
 package classy.compiler.analyzing;
 
+import static classy.compiler.util.ParsingUtil.makeProgram;
+import static classy.compiler.util.ParsingUtil.mockToken;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static classy.compiler.util.ParsingUtil.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -22,17 +24,24 @@ public class OptimizerTest {
 	protected void setUp() throws Exception {
 		opt = new Optimizer();
 	}
+	
+	List<Token> makeList(Token...tokens) {
+		ArrayList<Token> ls = new ArrayList<>(tokens.length);
+		for (Token t: tokens)
+			ls.add(t);
+		return ls;
+	}
 
 	@Test
 	void optIf() {
 		// We have to make the program, so the best way is to do it via
 		//  the regular path. But we can skip lexing
-		List<Token> tokens = List.of(
+		List<Token> tokens = makeList(
 			mockToken(Token.Type.IF),
 			mockToken("false", Token.Type.FALSE),
-			mockToken(Token.Type.NEW_LINE),
+			mockToken(Token.Type.SEMICOLON),
 			mockToken("6", Token.Type.NUMBER),
-			mockToken(Token.Type.NEW_LINE),
+			mockToken(Token.Type.SEMICOLON),
 			mockToken("7", Token.Type.NUMBER)
 		);
 		Value program = makeProgram(tokens);
@@ -46,12 +55,12 @@ public class OptimizerTest {
 		assertEquals("7", ((Literal)only).getToken().getValue());
 		
 		// Now we want to check that the then case works too
-		tokens = List.of(
+		tokens = makeList(
 			mockToken(Token.Type.IF),
 			mockToken("true", Token.Type.TRUE),
-			mockToken(Token.Type.NEW_LINE),
+			mockToken(Token.Type.SEMICOLON),
 			mockToken("6", Token.Type.NUMBER),
-			mockToken(Token.Type.NEW_LINE),
+			mockToken(Token.Type.SEMICOLON),
 			mockToken("7", Token.Type.NUMBER)
 		);
 		program = makeProgram(tokens);

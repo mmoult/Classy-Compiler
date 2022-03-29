@@ -79,13 +79,19 @@ public class Checker {
 			// We have to perform grouping now that we know the type of all identifiers
 			List<Subexpression> sub = val.getSubexpressions();
 			// Evaluate function application and reference location very first
+			int lastSize = sub.size();
 			for (int i=0; i<sub.size(); i++) {
 				if (sub.get(i) instanceof Reference)
 					check((Reference)sub.get(i), env);
+				if (lastSize != sub.size()) {
+					// The list can change as references chain other parts
+					i--; // redo this index
+					lastSize = sub.size();
+				}
 			}
 			
 			// Then evaluate operator application, which has a lower precedence
-			if (val.getSubexpressions().size() > 1) {
+			if (sub.size() > 1) {
 				// We could not do this during parsing because of order of operations:
 				//  eg "2 + 4 / 1" -> "2 + (4 / 1)", even though the plus is seen first.
 				// Also, we could not know whether each identifier was a function until
@@ -250,6 +256,7 @@ public class Checker {
 			env.add(fxScope);
 			// Now that the function scope is made, use it for the value
 			type = check(asgn.getValue(), env);
+			
 			env.remove(env.size() - 1); // Remove the scope of the function call
 			// Now we can set the type of the return (assuming it has not been set already)
 			if (var.getType().output instanceof Undetermined.Return) {
@@ -374,7 +381,7 @@ public class Checker {
 		construct.type = new Type(created, fields); // give the params for the constructor type 
 		created.methods.put(construct.name, construct);
 		
-		return created;
+		return null;
 	}
 	
 	protected Type check(Reference ref, List<Frame> env) {
@@ -390,12 +397,22 @@ public class Checker {
 		List<Subexpression> subexp = ref.getParent().getSubexpressions();
 		int refAt = subexp.indexOf(ref);
 		if (refAt == -1) 
-			throw new CheckException("Reference ", ref, " cannot be found in parents subexpressions!");
+			throw new RuntimeException("Could not find " + ref.toString() + " in parent expression!");
 		if (refAt > 0) {
 			Subexpression sub = subexp.get(refAt - 1);
-			if (sub instanceof Reference)
-				member = !((Reference)sub).getType().isFunction();
-			else
+			if (sub instanceof Reference) {
+				// There is a case where the reference before is evaluating function arguments, in
+				//  which case the type will be null (but this cannot be a member, so it is fine).
+				Reference before = (Reference)sub;
+				member = before.getType() != null && !before.getType().isFunction();
+			}else if (sub instanceof Operation) {
+				// This may be a member of the result of the operation.
+				// But not if the operation's rhs is undefined. (In that case, this
+				//  is that operation's rhs. This may be checked before since function
+				//  application takes precedence over operators.)
+				Operation op = (Operation)sub;
+				member = op.getRHS() != null;
+			}else
 				member = true; // there is something to take the type of
 		}
 		
@@ -409,6 +426,8 @@ public class Checker {
 			if (refAt - 1 >= 0) {
 				Subexpression sub = subexp.remove(refAt - 1);
 				Type parentType = check(sub, env);
+				if (parentType instanceof Undetermined)
+					throw new CheckException("The type of ", sub, ", with the member ", ref, " could not be determined!");
 				// Now we must find some reference within
 				Variable linkedTo = parentType.fields.get(ref.getVarName()); // first try a field
 				if (linkedTo == null)
@@ -416,8 +435,9 @@ public class Checker {
 				if (linkedTo == null) // could not find a valid member in the type
 					throw new CheckException("\"", ref.getVarName(), "\" from ", ref, " not a member of ", parentType, "!");
 				ref.setLinkedTo(linkedTo);
-				ref.setLocation(new Value(null, sub));
 				ref.setMember(true);
+				ref.getMemberData().location = new Value(null, sub);
+				ref.getMemberData().memberOf = parentType;
 				
 				Type linkType = linkedTo.getType();
 				if (linkType.isFunction())
@@ -503,21 +523,24 @@ public class Checker {
 		// Check all arguments to this reference
 		// We don't want to check a tuple by itself, since it cannot occur by
 		//  itself, and an error should be thrown if it is.
-		if (!(subexp.get(refAt + 1) instanceof Tuple)) {
-			Subexpression next = subexp.get(refAt + 1);
-			if (next instanceof BinOp) // operations are not possible on function types 
-				throw new CheckException("Operation ", next,
+		// We cannot disconnect the subexpression before it is checked since it may
+		//  itself have connecting arguments.
+		Subexpression argLs = subexp.get(refAt + 1);
+		if (!(argLs instanceof Tuple)) {
+			if (argLs instanceof BinOp) // operations are not possible on function types 
+				throw new CheckException("Operation ", argLs,
 						" may not be called on function-typed reference ", ref, "!");
 			
 			// If all the checks did not flag this, then it must be a call.
-			check(subexp.get(refAt + 1), env);
+			check(argLs, env);
 		}else {
 			// Check all the arguments in the list
-			Tuple ls = (Tuple)subexp.get(refAt + 1);
+			Tuple ls = (Tuple)argLs;
 			for (Value arg: ls.getArgs())
 				check(arg, env);
 		}
-		Subexpression argLs = subexp.remove(refAt + 1);
+		
+		subexp.remove(refAt + 1);
 		// We want to get the argument list for this reference. If the argument
 		//  is not an argument list (which is common for single-argument functions),
 		//  then we want to wrap it as an argument list for uniformity.

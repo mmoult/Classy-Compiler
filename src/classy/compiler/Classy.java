@@ -21,7 +21,7 @@ import classy.compiler.parsing.Value;
 import classy.compiler.translation.Translator;
 
 public class Classy {
-	private final static boolean DEBUG = false;
+	private final static boolean DEBUG = true;
 	public static final String SAVE = "save";
 	public static final String VERBOSE = "verbose";
 	public static final String NO_OPT = "O0";

@@ -168,7 +168,7 @@ Blocks are subexpressions which contain exactly one value, and may contain any n
  |  Pascal's triangle at the specified row.
  |  Rows are calculated beginning with row
  |# 0 yielding [1].
-let pascal(row: Nat) = {
+let pascal(row) = {
 	if row == 0
 		[1]
 	let previous = pascal(row - 1)
@@ -177,7 +177,7 @@ let pascal(row: Nat) = {
 	let build(prev) = {
 		if prev len == 1
 			sofar
-		prev at 0 + prev at 1 + build (prev rest)
+		prev at 0 + prev at 1 + build prev.rest
 	}
 	build padded
 }
@@ -206,7 +206,7 @@ type Bar = a: A
 
 To construct a type, all fields without default values must be provided. For the example type `Foo`, a construction may look like:
 ```
-Foo new (myA, myB)
+Foo (myA, myB)
 ```
 where myA is a value of type A and myB is a value of type B.
 
@@ -216,11 +216,14 @@ type Foo = (a = 2, b = 3)
 ```
 then a void construction call may be used for Foo. As with regular functions, the fields may be provided anyway, or fields may be given in a different order if they have the correct labels (see [Functions](#functions)).
 
-Methods can be set for any type by a syntax similar to a regular function definition. Assuming that type `Dog` was previously defined, a function `makeNoise` can be defined as such:
+Object members may be accessed by the dot notation or separated by a space. If `foo` is some instance of the previously defined type, Foo, then `foo.a` or `foo a` would give the value of `a` in `foo`. 
+
+Methods can be defined for a type with a syntax similar to a regular function definition. Assuming that type `Dog` was previously defined, a function `makeNoise` can be defined as such:
 ```
 let Dog.makeNoise() = 0
-``` 
-and the `makeNoise` function can be called on a dog object, `fido`, by either `fido.makeNoise()` or `fido makeNoise()`.
+```
+
+In a method definition, the period dividing the type name and method name is necessary. However, the method can be accessed from the object in the same way that a field can be: Given some dog object, `fido`, the `makeNoise()` method can be called by either `fido.makeNoise()` or `fido makeNoise()`.
 
 ### Inheritance
 Subtyping may be specified using the `isa` keyword. Suppose that A is a subtype of some pre-defined type B. In A's declaration, this relationship could be represented as such:
@@ -228,7 +231,7 @@ Subtyping may be specified using the `isa` keyword. Suppose that A is a subtype 
 type A isa B = ...
 ```
 
-If A is a subtype of B, then all operations that can be performed on B can be performed on A. Subtyping also gives the ability to overload functions, which is providing more specific function variants to be used for the subtype.  
+If A is a subtype of B, then all operations that can be performed on B can be performed on A. Subtyping also gives the ability to overload functions, where more specific variants can be used for the subtype.  
 
 ### Generics
 ...

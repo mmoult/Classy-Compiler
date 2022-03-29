@@ -1,5 +1,8 @@
 package classy.compiler.translation;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import classy.compiler.analyzing.Type;
 
 public class OutType {
@@ -10,7 +13,10 @@ public class OutType {
 	protected int alignment = 8;
 	//TODO make the size work
 	protected int size = 8;
+	
+	protected Map<String, Integer> fieldLocations = new HashMap<>();
 
+	
 	public OutType(Type linked, String mangledName, int typeNum) {
 		this.linked = linked;
 		this.mangledName = mangledName;

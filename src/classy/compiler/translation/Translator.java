@@ -71,6 +71,10 @@ public class Translator {
 	}
 	
 	private String mangle(String name) {
+		// If this name starts with "..", then it is a compiler-used name
+		if (name.startsWith(".."))
+			return name;
+		
 		String useName = cleanIdentifier(name);
 		if (namesUsed.contains(name)) {
 			// There was a collision, so we try another
@@ -94,31 +98,10 @@ public class Translator {
 		return clean.toString();
 	}
 	
-	public void translate(Value program, List<Type> types) {		
-		lines = new LinePlacer(new ArrayList<>());
-		lines.addLine();
-		lines.addLine("define dso_local i32 @main() {");
-		lines.deltaIndent(1);
-		
-		// Previously we could allocate space for the return before we continued.
-		//  This is not possible with the inheritance tree we set up, since subclasses
-		//  require more space than the super. Thus, the new translation model
-		//  requires each step to return the pointer location of the return.
-		String retAt = null;
-		for (Expression e: program.getSubexpressions()) {
-			retAt = translate(e);
-		}
-		
-		// TODO: We will have to use a dynamic dispatch of toString, since we won't necessarily
-		//  know statically that the variable is an int even if it is.
-		lines.addLine("call void @..print(i8* ", retAt, ")");
-		lines.addLine("ret i32 0");
-		lines.deltaIndent(-1);
-		lines.addLine("}");
-		
+	public void translate(Value program, List<Type> types) {
 		// Define all the types that we used
-		LinePlacer.State old = lines.getTop();
 		// Define the default types:
+		ArrayList<String> setup = new ArrayList<>();
 		for (Type t: types) {
 			// create the struct with the name that mangling decided
 			// %struct.Bar = type { %struct.Foo, %struct.Foo }
@@ -140,7 +123,12 @@ public class Translator {
 				Map<String, Variable> fields = t.getFields();
 				int size = fields.keySet().size();
 				type.size = 4 + 4*size;
-				for (int i=0; i<size; i++) {
+				int location = 0;
+				
+				for (String varName : fields.keySet()) {
+					Variable field = fields.get(varName);
+					varNames.put(field, varName); // we don't have to mangle since it is in the struct
+					type.fieldLocations.put(varName, ++location);
 					// cannot make the type literal since it may receive a subtype
 					typeLine.append(", " + voidPtr);
 				}
@@ -156,8 +144,30 @@ public class Translator {
 				type.size = 5;
 			}
 			typeLine.append(" }");
-			lines.addLine(typeLine.toString(), "; Type ID = ", type.typeNum+"");
+			setup.add(typeLine.toString() + "; Type ID = " + type.typeNum);
 		}
+		lines = new LinePlacer(setup);
+		
+		lines.addLine();
+		lines.addLine("define dso_local i32 @main() {");
+		lines.deltaIndent(1);
+		
+		// Previously we could allocate space for the return before we continued.
+		//  This is not possible with the inheritance tree we set up, since subclasses
+		//  require more space than the super. Thus, the new translation model
+		//  requires each step to return the pointer location of the return.
+		String retAt = null;
+		for (Expression e: program.getSubexpressions()) {
+			retAt = translate(e);
+		}
+		
+		// TODO: We will have to use a dynamic dispatch of toString, since we won't necessarily
+		//  know statically that the variable is an int even if it is.
+		lines.addLine("call void @..print(i8* ", retAt, ")");
+		lines.addLine("ret i32 0");
+		lines.deltaIndent(-1);
+		lines.addLine("}");
+		
 		
 		// We must process all of the types before any dynamic dispatch methods
 		for (Type t: types) {
@@ -167,21 +177,30 @@ public class Translator {
 				varNum = 1;
 				Map<String, Variable> methods = t.getMethods();
 				for (String methodName: methods.keySet()) {
+					// If this method is a constructor, we disable it (since constructor created
+					//  for all user-defined types with the define)
+					if (methodName.startsWith("..new"))
+						continue;
 					Variable method = methods.get(methodName);
 					// If this method overrides another, then don't print it
 					if (!method.isOverridden())
 						continue;
+					// Save this method (the super) to varNames
+					String mangMethod = mangle(methodName);
+					varNames.put(method, mangMethod);
 					// We will print the dynamic dispatch of this method and all overrides
 					
 					StringBuffer decl = new StringBuffer();
 					Type fxType = method.getType();
+					if (fxType == null)
+						continue;
 					decl.append("define dso_local ");
 					if (fxType.getOutput() != null)
 						decl.append(voidPtr);
 					else
 						decl.append("void");
 					decl.append(" @");
-					decl.append(methodName);
+					decl.append(mangMethod);
 					decl.append("(");
 					boolean first = true;
 					for (ParameterType ptype: fxType.getInputs()) {
@@ -206,6 +225,8 @@ public class Translator {
 					String tag = "%" + load(tagAt, "i32", "4");
 					
 					for (Variable override : method.getOverrides()) {
+						// Save for the overriders to use the super
+						varNames.put(override, mangMethod);
 						// Get the type number for this variable
 						Type thisType = override.getType().getInputs()[0].getType();
 						OutType outType = outTypes.get(thisType);
@@ -227,11 +248,18 @@ public class Translator {
 					translateOverride(method, typeLibrary);
 					lines.deltaIndent(-1);
 					lines.addLine("}");
+					lines.addLine();
 				}
 			}
 		}
-		lines.revertState(old);
-		lines.addLine();
+		
+		// Lastly, we need to create the "..super" method, which will allow us to cast from a type
+		//  to one of its ancestors.
+		// We need to allow for this method to be called on any type in our system. The pattern
+		//  here is similar to the method overriding, but no type should be aware of this method,
+		//  so we do it all internally instead of on a type basis.
+		// TODO HERE
+		
 	}
 	
 	protected void translateOverride(Variable override, Map<String, Map<String, List<String>>> typeLibrary) {
@@ -239,13 +267,18 @@ public class Translator {
 			String retAt = translate(override.getValue());
 			lines.addLine("ret ", voidPtr, retAt);
 		}else { // If it is null, then we assume it is saved as a built-in library
+			if (override.getType().getInputs().length < 1)
+				return;
 			Type t = override.getType().getInputs()[0].getType();
 			if (!typeLibrary.containsKey(t.getName()))
 				typeLibrary.put(t.getName(), loadLibrary(t.getName() + ".ll"));
 			Map<String, List<String>> forType = typeLibrary.get(t.getName());
-			if (!forType.containsKey(override.getName()))
+			if (!forType.containsKey(override.getName())) {
+				if (override.getName().startsWith("..new")) // constructor on creation
+					return;
 				throw new RuntimeException("Missing library function of " + 
 						override.getName() + " for class " + t.getName() + "!");
+			}
 			
 			List<String> thisMethod = forType.get(override.getName());
 			lines.deltaIndent(-1);
@@ -302,6 +335,7 @@ public class Translator {
 			List<String> currFunction = null;
 			String fxName = null;
 			LinePlacer.State old = lines.getTop();
+			lines.addLine();
 			while (scan.hasNextLine()) {
 				String line = scan.nextLine();
 				if (inFunction) {
@@ -318,7 +352,7 @@ public class Translator {
 						fxName = line.substring(9, line.indexOf(' ', 10));
 						currFunction = new ArrayList<>();
 						inFunction = true;
-					}else
+					}else if (!line.isEmpty())
 						lines.addLine(line);
 				}
 			}
@@ -386,7 +420,50 @@ public class Translator {
 			return setGlobalLiteral((Literal)e, true);
 		} else if (e instanceof TypeDefinition) {
 			TypeDefinition def = (TypeDefinition)e;
+			// We need to build the constructor for this type
+			Type sourced = def.getSourced();
+			String ctorName = "..new" + sourced.getName();
+			Variable constructor = sourced.getMethods().get(ctorName);
+			varNames.put(constructor, ctorName);
+			int prevVarNum = this.varNum;
+			this.varNum = 1;
+			this.inFunction++;
+			LinePlacer.State oldState = lines.getTop();
+			StringBuffer fields = new StringBuffer();
+			boolean first = true;
+			for (String field: sourced.getFields().keySet()) {
+				if (first)
+					first = false;
+				else
+					fields.append(", ");
+				fields.append(voidPtr);
+				fields.append("%");
+				fields.append(field);
+			}
+			lines.addLine("define dso_local " + voidPtr + " @" + ctorName + "(" + fields.toString() + ") {");
+			lines.deltaIndent(1);
 			
+			// Now we need to create an instance of the type, set all necessary fields
+			OutType type = outTypes.get(sourced);
+			String thiss = newObject(type, false);
+			// Since the OutType does not currently impose an ordering, we just roll with the order in type
+			int i = 0;
+			for (String field: sourced.getFields().keySet()) {
+				// save a name for the field variable (not that it is used)
+				String mangField = mangle(field);
+				varNames.put(sourced.getFields().get(field), mangField);
+				type.fieldLocations.put(field, ++i);
+				String fieldAt = "%" + getElementPtr(thiss, type, i);
+				store("%" + field, voidPtr, "8", fieldAt);
+			}
+			
+			String voided = "%" + castVoidPtr(thiss, type);
+			lines.addLine("ret ", voidPtr, voided);
+			lines.deltaIndent(-1);
+			lines.addLine("}");
+			lines.revertState(oldState);
+			this.varNum = prevVarNum;
+			this.inFunction--;
 			return null;
 		}else if (e instanceof Assignment) {
 			Assignment asgn = (Assignment)e;
@@ -447,10 +524,22 @@ public class Translator {
 			Reference ref = (Reference)e;
 			String name = varNames.get(ref.getLinkedTo());
 			if (name == null)
-				throw new RuntimeException("Reference \"" + name + "\" encountered without a name in translation!");
+				throw new RuntimeException("Reference \"" + ref.getVarName() + "\" encountered without a name in translation!");
 			if (ref.getArgument() == null) {
 				// Regular reference
-				return name;
+				// If the reference has no location, then we can simply return the mangled name
+				if (!ref.isMember())
+					return name;
+				// Otherwise, it is a field, so we need to compute the location, then call from there
+				Reference.MemberData dat = ref.getMemberData();
+				String location = translate(dat.location);
+				// We may need to cast up from the type returned...
+				//TODO HERE
+				// Right now we are just going to punt and assume that location is the struct we need
+				OutType oType = outTypes.get(dat.memberOf);
+				String casted = "%" + bitCast(location, oType);
+				String fieldAt = "%" + getElementPtr(casted, oType, oType.fieldLocations.get(name));
+				return "%" + load(fieldAt, voidPtr, "8");
 			}else {
 				// Function call
 				Value argument = ref.getArgument();

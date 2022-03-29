@@ -10,8 +10,7 @@ public class Reference extends Subexpression {
 	protected Value arguments;
 	protected Type type;
 	
-	protected boolean member = false;
-	protected Value location; // where this is a reference in. Only applicable if member==true
+	protected MemberData memberData = null;
 	
 	
 	public Reference(Value parent) {
@@ -23,7 +22,7 @@ public class Reference extends Subexpression {
 		// If this is a self reference, it cannot be a member
 		if (!it.match(Token.Type.SELF, end)) {
 			if (it.match(Token.Type.PERIOD, end)) {
-				member = true;
+				memberData = new MemberData();
 				it.next(end);
 			}
 			
@@ -61,16 +60,16 @@ public class Reference extends Subexpression {
 	}
 	
 	public boolean isMember() {
-		return member;
+		return memberData != null;
 	}
 	public void setMember(boolean member) {
-		this.member = member;
+		if (member)
+			memberData = new MemberData();
+		else
+			memberData = null;
 	}
-	public Value getLocation() {
-		return location;
-	}
-	public void setLocation(Value location) {
-		this.location = location;
+	public MemberData getMemberData() {
+		return memberData;
 	}
 	
 	public void setArgument(Value val) {
@@ -90,10 +89,11 @@ public class Reference extends Subexpression {
 	@Override
 	public String pretty(int indents) {
 		StringBuffer buf = new StringBuffer();
-		if (location != null && member)
-			buf.append(location.pretty(indents));
-		if (member)
+		if (memberData != null) {
+			if (memberData.location != null)
+				buf.append(memberData.location.pretty(indents));
 			buf.append('.');
+		}
 		buf.append(varName);
 		
 		if (arguments != null) {
@@ -116,11 +116,24 @@ public class Reference extends Subexpression {
 		cloned.linkedTo = linkedTo; // referencing the same variable, so no cloning here
 		if (linkedTo != null)
 			linkedTo.addRef(cloned);
-		if (cloned.location != null)
-			cloned.location = location.clone();
-		cloned.member = member;
+		if (memberData != null) {
+			cloned.memberData = new MemberData();
+			cloned.memberData.memberOf = memberData.memberOf;
+			cloned.memberData.location = memberData.location.clone();
+		}
 		cloned.type = type;
 		return cloned;
+	}
+	
+	public static class MemberData {
+		public Value location;
+		public Type memberOf;
+		
+		public MemberData() { }
+		public MemberData(Value location, Type memberOf) {
+			this.location = location;
+			this.memberOf = memberOf;
+		}
 	}
 
 }
