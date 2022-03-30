@@ -258,8 +258,25 @@ public class Translator {
 		// We need to allow for this method to be called on any type in our system. The pattern
 		//  here is similar to the method overriding, but no type should be aware of this method,
 		//  so we do it all internally instead of on a type basis.
-		// TODO HERE
-		
+		lines.addLine("define dso_local ", voidPtr, " @..super(", voidPtr, " %this, i32 %exp) {");
+		lines.deltaIndent(1);
+		// Get the type of this
+		OutType anyType = outTypes.get(Type.Any);
+		String any = "%" + bitCast("%this", anyType);
+		String typeAt = "%" + getElementPtr(any, anyType, 0);
+		// Need to load the type for the comparison
+		String typeVal = "%" + load(typeAt, "i32", "4");
+		// If the type is currently what is desired, return this
+		// %4 = icmp eq i32 %3, 2
+		int compared = varNum++;
+		lines.addLine("%" + compared, " = icmp eq i32 ", typeVal, ", %exp");
+		lines.addLine("br i1 %"+compared, ", label %isMatch, label %fail");
+		lines.addLabel("isMatch");
+		lines.addLine("ret ", voidPtr, " %this");
+		lines.addLabel("fail");
+		lines.addLine("ret ", voidPtr, " %this"); // TODO later should return null
+		lines.deltaIndent(-1);
+		lines.addLine("}");
 	}
 	
 	protected void translateOverride(Variable override, Map<String, Map<String, List<String>>> typeLibrary) {
@@ -383,10 +400,11 @@ public class Translator {
 			// We want to find the result of the condition, then jump from there
 			String cond = translate(if_.getCondition());
 			// We must find the boolean dynamically. There is no other way.
-			// TODO For now we punt and assume the condition equals a Bool.
 			OutType oBool = outTypes.get(Type.Bool);
+			String ocond = "%" + varNum++;
+			lines.addLine(ocond, " = call ", voidPtr, " @..super(", voidPtr, " ", cond, ", i32 " + oBool.typeNum, ")");
 			// cast to what we need (Bool) before use
-			int toBool = bitCast(cond, oBool);
+			int toBool = bitCast(ocond, oBool);
 			String inBool = "%" + getElementPtr("%"+toBool, oBool, 1);
 			String loaded = load(inBool, "i1", "4")+"";
 			

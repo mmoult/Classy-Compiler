@@ -268,6 +268,26 @@ public class Type {
 		return buf.toString();
 	}
 	
+	public String pretty() {
+		if (!isFunction()) {
+			return name;
+		}else {
+			StringBuffer buf = new StringBuffer();
+			buf.append("(");
+			boolean first = true;
+			for (ParameterType input: inputs) {
+				if (first)
+					first = false;
+				else
+					buf.append(", ");
+				buf.append(input);
+			}
+			buf.append(" -> ");
+			buf.append(")");
+			return buf.toString();
+		}
+	}
+	
 	public static class Stub extends Type {
 		public Stub(String name) {
 			super('-' + name);

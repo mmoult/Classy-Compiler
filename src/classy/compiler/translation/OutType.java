@@ -11,7 +11,6 @@ public class OutType {
 	protected int typeNum;
 	
 	protected int alignment = 8;
-	//TODO make the size work
 	protected int size = 8;
 	
 	protected Map<String, Integer> fieldLocations = new HashMap<>();
@@ -22,6 +21,5 @@ public class OutType {
 		this.mangledName = mangledName;
 		this.typeNum = typeNum;
 	}
-	
 	
 }

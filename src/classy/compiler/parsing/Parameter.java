@@ -99,6 +99,10 @@ public class Parameter extends NameBinding {
 	@Override
 	public String pretty(int indents) {
 		StringBuffer buf = new StringBuffer(name);
+		if (annotation != null) {
+			buf.append(": ");
+			buf.append(annotation.pretty());
+		}
 		if (defaultVal != null) {
 			buf.append(" = ");
 			buf.append(defaultVal.pretty(indents));

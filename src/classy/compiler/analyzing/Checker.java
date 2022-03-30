@@ -372,11 +372,12 @@ public class Checker {
 			if (p.getAnnotation() != null)
 				type = resolveAnnotation(p.getAnnotation(), type, env, p);
 			field.setType(type);
+			p.setAnnotation(type); // update the parameter (for printing)
 			fields[i] = new ParameterType(p.getName(), type);
+			fields[i].setDefaultValue(p.getDefaultVal());
 			
 			created.fields.put(p.getName(), field);
 		}
-		// TODO create the constructor
 		Variable construct = new Variable("..new" + def.getTypeName(), null, null);
 		construct.type = new Type(created, fields); // give the params for the constructor type 
 		created.methods.put(construct.name, construct);

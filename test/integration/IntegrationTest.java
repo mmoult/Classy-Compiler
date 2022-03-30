@@ -232,6 +232,25 @@ class IntegrationTest {
 		expectFromProgram(lines, "8");
 	}
 	
+	@Test
+	void constructorDefaultValue() {
+		List<String> lines = List.of(
+			"type False = val = false",
+			"let myBool = False void",
+			"myBool.val"
+		);
+		expectFromProgram(lines, "false");
+	}
+	
+	@Test
+	void emptyType() {
+		List<String> lines = List.of(
+			"type Empty = void",
+			"true"
+		);
+		expectFromProgram(lines, "true");
+	}
+	
 	protected ProcessResult runProcess(List<String> cmd) {
 		ProcessBuilder processBuilder = new ProcessBuilder(cmd);
 		processBuilder.redirectErrorStream(true);

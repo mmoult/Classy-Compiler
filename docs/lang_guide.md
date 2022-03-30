@@ -195,7 +195,7 @@ New types may be specified with the syntax:
 ```
 type NAME = FIELD_LIST
 ```
-where NAME is any valid identifier (though convention dictates the type should be capitalized), and the field list is a list of variables in the same format as a function parameter list. For example, a type `Foo` with fields a and b could be specified thus:
+where NAME is any valid identifier (though convention dictates the type should be capitalized), and the field list is a list of zero or more variables in the same format as a function parameter list. For example, a type `Foo` with fields a and b could be specified thus:
 ```
 type Foo = (a: A, b: B)
 ```
@@ -231,7 +231,21 @@ Subtyping may be specified using the `isa` keyword. Suppose that A is a subtype 
 type A isa B = ...
 ```
 
-If A is a subtype of B, then all operations that can be performed on B can be performed on A. Subtyping also gives the ability to overload functions, where more specific variants can be used for the subtype.  
+If A is a subtype of B, then all members (fields and methods) belonging to B are available to A. In short, an object A can be used where any object B is expected. 
+
+The built-in types of Any, Int, and Bool can be extended as expected. For example, an if expression requires a Bool condition. Thus, using subtyping, the following code will result in 5:
+```
+type MyBool isa Bool = void
+let mb = MyBool true
+if mb
+	5
+-1
+```
+
+Subtyping also provides the ability to overload functions, where more specific variants can be used for the subtype.
+...
+
+Classy ~~supports~~ *will support* complex inheritance relations, including multiple inheritance and default parent values. Each super type may be listed, delimited by commas. `type A isa B, C = ...` Default parent values may be provided literally (`type A isa 5 = ...`) or with a type label (`type A isa (Bool = true) = ...`). 
 
 ### Generics
 ...
