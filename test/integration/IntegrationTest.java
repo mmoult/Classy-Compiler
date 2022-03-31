@@ -251,6 +251,30 @@ class IntegrationTest {
 		expectFromProgram(lines, "true");
 	}
 	
+	@Test
+	void inheritField() {
+		List<String> lines = List.of(
+			"type Foo = num: Int",
+			"type Bar isa Foo = void",
+			"let bar = Bar(Foo 1)",
+			"bar.num"
+		);
+		expectFromProgram(lines, "1");
+	}
+	
+	@Test
+	void useAsBool() {
+		List<String> lines = List.of(
+			"type MyBool isa Bool = void",
+			"let mb = MyBool true",
+			"if mb",
+			"	false",
+			"0"
+		);
+		
+		expectFromProgram(lines, "false");
+	}
+	
 	protected ProcessResult runProcess(List<String> cmd) {
 		ProcessBuilder processBuilder = new ProcessBuilder(cmd);
 		processBuilder.redirectErrorStream(true);

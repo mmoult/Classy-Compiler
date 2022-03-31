@@ -110,29 +110,15 @@ public class Translator {
 			typeLine.append(type.mangledName);
 			typeLine.append(" = type { ");
 			typeLine.append(tagType);
+			int structLoc = 0;
 			// Now we append all the types that are parents of this type
 			for (int i=0; t.getParents() != null && i < t.getParents().length; i++) {
 				if (t.getParents()[i].equals(Type.Any))
 					continue;
 				typeLine.append(", " + voidPtr);
+				type.fieldLocations.put("..super"+i, ++structLoc);
 			}
 			// Now we append all the fields of this type
-			// TODO: we may want to reorder the fields for better spacing.
-			// Also, we want to keep track of the size of the struct
-			if (t.getFields() != null) {
-				Map<String, Variable> fields = t.getFields();
-				int size = fields.keySet().size();
-				type.size = 4 + 4*size;
-				int location = 0;
-				
-				for (String varName : fields.keySet()) {
-					Variable field = fields.get(varName);
-					varNames.put(field, varName); // we don't have to mangle since it is in the struct
-					type.fieldLocations.put(varName, ++location);
-					// cannot make the type literal since it may receive a subtype
-					typeLine.append(", " + voidPtr);
-				}
-			}
 			// If the field is a built-in, then we have some fields to add directly
 			if (t.equals(Type.Int)) {
 				typeLine.append(", ");
@@ -142,6 +128,21 @@ public class Translator {
 				typeLine.append(", ");
 				typeLine.append("i1");
 				type.size = 5;
+			}
+			// We may want to reorder the fields in the future for better spacing.
+			// Also, we want to keep track of the size of the struct
+			if (t.getFields() != null) {
+				Map<String, Variable> fields = t.getFields();
+				int size = fields.keySet().size();
+				type.size = 4 + 4*size;
+				
+				for (String varName : fields.keySet()) {
+					Variable field = fields.get(varName);
+					varNames.put(field, varName); // we don't have to mangle since it is in the struct
+					type.fieldLocations.put(varName, ++structLoc);
+					// cannot make the type literal since it may receive a subtype
+					typeLine.append(", " + voidPtr);
+				}
 			}
 			typeLine.append(" }");
 			setup.add(typeLine.toString() + "; Type ID = " + type.typeNum);
@@ -167,7 +168,7 @@ public class Translator {
 		lines.addLine("ret i32 0");
 		lines.deltaIndent(-1);
 		lines.addLine("}");
-		
+		lines.addLine();
 		
 		// We must process all of the types before any dynamic dispatch methods
 		for (Type t: types) {
@@ -267,14 +268,57 @@ public class Translator {
 		// Need to load the type for the comparison
 		String typeVal = "%" + load(typeAt, "i32", "4");
 		// If the type is currently what is desired, return this
-		// %4 = icmp eq i32 %3, 2
 		int compared = varNum++;
 		lines.addLine("%" + compared, " = icmp eq i32 ", typeVal, ", %exp");
-		lines.addLine("br i1 %"+compared, ", label %isMatch, label %fail");
+		String nextTc = "next" + 0; // next type check
+		lines.addLine("br i1 %"+compared, ", label %isMatch, label %", nextTc);
 		lines.addLabel("isMatch");
 		lines.addLine("ret ", voidPtr, " %this");
-		lines.addLabel("fail");
-		lines.addLine("ret ", voidPtr, " %this"); // TODO later should return null
+		
+		int typeCheck = 0;
+		for (Type type : types) {
+			OutType oType = outTypes.get(type);
+			String isThis = "isCheck" + typeCheck;
+			String isMatch = "isMatch" + typeCheck;
+			
+			int parent = 0;
+			// Search for all parents of this type
+			while(oType.fieldLocations.containsKey("..super" + parent)) {
+				if (parent == 0) { // if this is the first cycle for the type
+					lines.addLabel(nextTc);
+					++typeCheck;
+					nextTc = "next" + typeCheck;
+					// check to see if this tag matches this type
+					lines.addLine("%", isThis, " = icmp eq i32 ", typeVal, ", " + oType.typeNum);
+					lines.addLine("br i1 %", isThis, ", label %", isMatch, ", label %", nextTc);
+					lines.addLabel(isMatch);
+				}
+				String casted = "%" + bitCast("%this", oType);
+				String parAt = "%" + getElementPtr(casted, oType, oType.fieldLocations.get("..super"+parent));
+				String parPtr = "%" + load(parAt, voidPtr, "4"); // get the parent in the struct
+				String par = "in" + oType.typeNum + "p" + parent;
+				// Make a recursive call to try to match with the parent
+				lines.addLine("%", par, " = call ", voidPtr, " @..super(", voidPtr, " ", parPtr, ", i32 %exp)");
+				// If we get back null, then that parent was not a match
+				// But if it is not null, then we return that
+				// Make the null check here
+				String nullCheck = "%" + varNum++;
+				lines.addLine(nullCheck, " = icmp ne ", voidPtr, " null, %", par);
+				
+				// We need to know if there are any more parents of this type
+				boolean moreParents = oType.fieldLocations.containsKey("..super" + (++parent));
+				String nextLabel = (moreParents)? "n"+par : nextTc;
+				lines.addLine("br i1 ", nullCheck, ", label %y", par, ", label %", nextLabel);
+				lines.addLabel("y" + par);
+				lines.addLine("ret ", voidPtr, " %", par); // return what we got
+				// If there is another parent, add the branch here.
+				//  Otherwise, the next type (or end) will take care of the label.
+				if (moreParents)
+					lines.addLabel("n" + par);
+			}
+		}
+		lines.addLabel(nextTc);
+		lines.addLine("ret ", voidPtr, " null"); // if we did not get anything, then return null
 		lines.deltaIndent(-1);
 		lines.addLine("}");
 	}
@@ -440,6 +484,7 @@ public class Translator {
 			TypeDefinition def = (TypeDefinition)e;
 			// We need to build the constructor for this type
 			Type sourced = def.getSourced();
+			OutType oType = outTypes.get(sourced);
 			String ctorName = "..new" + sourced.getName();
 			Variable constructor = sourced.getMethods().get(ctorName);
 			varNames.put(constructor, ctorName);
@@ -447,32 +492,31 @@ public class Translator {
 			this.varNum = 1;
 			this.inFunction++;
 			LinePlacer.State oldState = lines.getTop();
-			StringBuffer fields = new StringBuffer();
+			StringBuffer ctorIn = new StringBuffer();
 			boolean first = true;
-			for (String field: sourced.getFields().keySet()) {
+			
+			for (String cIn: oType.fieldLocations.keySet()) {
 				if (first)
 					first = false;
 				else
-					fields.append(", ");
-				fields.append(voidPtr);
-				fields.append("%");
-				fields.append(field);
+					ctorIn.append(", ");
+				ctorIn.append(voidPtr);
+				ctorIn.append(" %");
+				ctorIn.append(cIn);
 			}
-			lines.addLine("define dso_local " + voidPtr + " @" + ctorName + "(" + fields.toString() + ") {");
+			lines.addLine();
+			lines.addLine("define dso_local " + voidPtr + " @" + ctorName + "(" + ctorIn.toString() + ") {");
 			lines.deltaIndent(1);
 			
 			// Now we need to create an instance of the type, set all necessary fields
 			OutType type = outTypes.get(sourced);
 			String thiss = newObject(type, false);
-			// Since the OutType does not currently impose an ordering, we just roll with the order in type
-			int i = 0;
-			for (String field: sourced.getFields().keySet()) {
-				// save a name for the field variable (not that it is used)
-				String mangField = mangle(field);
-				varNames.put(sourced.getFields().get(field), mangField);
-				type.fieldLocations.put(field, ++i);
-				String fieldAt = "%" + getElementPtr(thiss, type, i);
-				store("%" + field, voidPtr, "8", fieldAt);
+			
+			for (String cIn: oType.fieldLocations.keySet()) {
+				// save a name for the field variable (though not currently used)
+				varNames.put(sourced.getFields().get(cIn), cIn);
+				String fieldAt = "%" + getElementPtr(thiss, type, oType.fieldLocations.get(cIn));
+				store("%" + cIn, voidPtr, "8", fieldAt);
 			}
 			
 			String voided = "%" + castVoidPtr(thiss, type);
@@ -551,11 +595,13 @@ public class Translator {
 				// Otherwise, it is a field, so we need to compute the location, then call from there
 				Reference.MemberData dat = ref.getMemberData();
 				String location = translate(dat.location);
-				// We may need to cast up from the type returned...
-				//TODO HERE
-				// Right now we are just going to punt and assume that location is the struct we need
+				String supered = "%" + varNum++;
 				OutType oType = outTypes.get(dat.memberOf);
-				String casted = "%" + bitCast(location, oType);
+				// cast up from the type returned (as necessary)
+				lines.addLine(supered + " = call ", voidPtr, " @..super(", voidPtr, " ",
+						location, ", i32 " + oType.typeNum + ")");
+				// Now we can cast the supered location to the type that we need to access the field
+				String casted = "%" + bitCast(supered, oType);
 				String fieldAt = "%" + getElementPtr(casted, oType, oType.fieldLocations.get(name));
 				return "%" + load(fieldAt, voidPtr, "8");
 			}else {

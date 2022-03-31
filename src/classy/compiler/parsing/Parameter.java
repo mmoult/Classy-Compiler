@@ -37,7 +37,9 @@ public class Parameter extends NameBinding {
 							startToken, "!");
 				it.next(end);
 			} // We can still see a default value even if we saw an annotation
-			if (it.match(Token.Type.ASSIGN, end)) {
+			while(Token.isNonSyntaxType(it.token().getType()) && it.token().getType() != Token.Type.SEMICOLON)
+				it.next(end);
+			if (it.token().getType() == Token.Type.ASSIGN) {
 				// We are going to set a default value for this parameter
 				it.next(end);
 				defaultVal = new Value();

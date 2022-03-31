@@ -359,9 +359,56 @@ public class Checker {
 		types.add(created);
 		def.setSourced(created);
 		curScope.makeType(created);
-		// We also want to add all fields from this type definition
+		// We also want to add all supers and fields from this type definition
 		List<Parameter> fieldList = def.getFieldList();
-		ParameterType fields[] = new ParameterType[fieldList.size()];
+		int numSupers = 0;
+		if (def.getSupers() != null) {
+			numSupers = def.getSupers().getArgs().size();
+			if (numSupers > 0)
+				created.parents = new Type[numSupers];
+		}
+		ParameterType fields[] = new ParameterType[numSupers + fieldList.size()];
+		int index = 0;
+		for (int i=0; i<numSupers; i++) {
+			LabeledValue lv = def.getSupers().getArgs().get(i);
+			// We have three options here:
+			//  if the value is a single reference that does not type, we check if it is a type
+			//  if the value is unlabeled, then it is a default value for a parent (and type implied)
+			//  if the value is labeled, then the label is the type and the value is the def value.
+			// TODO support the other ones.
+			// Right now I am rushing so I am only going to implement the first one
+			if (lv.getLabel() == null) {
+				boolean defVal = true;
+				if (lv.getSubexpressions().size() == 1) {
+					Subexpression first = lv.getSubexpressions().get(0);
+					if (first instanceof Reference) {
+						Reference ref = (Reference)first;
+						// Try checking the reference and seeing what happens
+						try {
+							Type got = check(ref, env);
+							if (got != null && got.isFunction() && got.source == null)
+								defVal = false; // we found the constructor!
+						}catch(CheckException ignore) {
+							// There was some checking error, which means that this is assumed a type
+							defVal = false;
+						}
+						if (!defVal) {
+							String typeName = ref.getVarName();
+							// Should give some name binding as an error help (last argument below):
+							Type type = resolveAnnotation(new Type.Stub(typeName), null, env, null);
+							created.parents[i] = type;
+							// supers cannot use named args
+							fields[index] = new ParameterType(".super"+typeName, type); 
+							index++;
+						}
+					}
+				}if (defVal) {
+					
+				}
+			}else {
+				
+			}
+		}
 		for (int i=0; i < fieldList.size(); i++) {
 			Parameter p = fieldList.get(i);
 			Variable field = new Variable(p.getName(), p.getDefaultVal(), p);
@@ -373,8 +420,9 @@ public class Checker {
 				type = resolveAnnotation(p.getAnnotation(), type, env, p);
 			field.setType(type);
 			p.setAnnotation(type); // update the parameter (for printing)
-			fields[i] = new ParameterType(p.getName(), type);
-			fields[i].setDefaultValue(p.getDefaultVal());
+			fields[index] = new ParameterType(p.getName(), type);
+			fields[index].setDefaultValue(p.getDefaultVal());
+			index++;
 			
 			created.fields.put(p.getName(), field);
 		}
@@ -429,12 +477,15 @@ public class Checker {
 				Type parentType = check(sub, env);
 				if (parentType instanceof Undetermined)
 					throw new CheckException("The type of ", sub, ", with the member ", ref, " could not be determined!");
+				
 				// Now we must find some reference within
-				Variable linkedTo = parentType.fields.get(ref.getVarName()); // first try a field
+				// We should be able to statically determine what type this member belongs to
+				parentType = getMemberOf(parentType, ref.getVarName());
+				if (parentType == null)
+					throw new CheckException("\"", ref.getVarName(), "\" from ", ref, " is not a member of ", parentType, "!");
+				Variable linkedTo = parentType.fields.get(ref.getVarName());
 				if (linkedTo == null)
-					linkedTo = parentType.methods.get(ref.getVarName()); // next try a method
-				if (linkedTo == null) // could not find a valid member in the type
-					throw new CheckException("\"", ref.getVarName(), "\" from ", ref, " not a member of ", parentType, "!");
+					linkedTo = parentType.methods.get(ref.getVarName());
 				ref.setLinkedTo(linkedTo);
 				ref.setMember(true);
 				ref.getMemberData().location = new Value(null, sub);
@@ -505,6 +556,32 @@ public class Checker {
 		}
 		
 		return ref.getType();
+	}
+	/**
+	 * Gets the type that the specified value is a member of, beginning with the provided
+	 * start type. If the type cannot be found for which name is a member, then null is
+	 * returned.
+	 * <p>
+	 * This method does statically what @..super does dynamically.
+	 * @param start the type (or the parents of which) to find the member in
+	 * @param name the name of the member to find
+	 * @return the type where name is a direct members
+	 */
+	protected Type getMemberOf(Type start, String name) {
+		Variable linkedTo = start.fields.get(name); // first try a field
+		if (linkedTo == null)
+			linkedTo = start.methods.get(name); // next try a method
+		if (linkedTo == null) { // could not find a valid member in the type
+			if (start.getParents() != null) {
+				for (Type parent: start.getParents()) {
+					Type maybeMembered = getMemberOf(parent, name);
+					if (maybeMembered != null)
+						return maybeMembered;
+				}
+			}
+			return null;
+		}
+		return start;
 	}
 	protected void handleFunctionRef(Reference ref, Type type, List<Frame> env, int refAt) {
 		// Just because this reference is a function type does *not* mean that it is being
