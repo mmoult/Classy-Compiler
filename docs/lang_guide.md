@@ -21,7 +21,7 @@ Assignments, which consist of both variable and function definitions, are very u
 ```
 let DEFINED = VALUE
 ```
-where "DEFINED" is a variable name or function name and parameters, and the value is what the variable or function should result in. For example, the definition of variable `foo` to a value of `1` would be written as: `let foo = 1`.
+where `DEFINED` is a variable name or function name and parameters, and `VALUE` is what the variable or function should result in. For example, the definition of variable `foo` to a value of `1` would be written as: `let foo = 1`.
 
 Common values to use for assignments include literals (such as `6` or `-13`), operators (see [Operators](#operators)), blocks (see [Blocks](#blocks)), and conditionals (see [Conditionals](#conditionals)).
 
@@ -46,7 +46,7 @@ The value of the function operates in the same scope of the assignment. This mea
 let A = 2
 let B(x) = A + x
 ```
-Calling B() would yield the proper result of A + x.
+Calling `B(y)` would yield the result of `A + y`, for some given value `y`.
 
 Default values may be specified for any parameter in the parameter list. Then, the function caller may omit the corresponding argument if no specification is desired. Consider the refinement of the previous sum function:
 ```
@@ -195,7 +195,7 @@ New types may be specified with the syntax:
 ```
 type NAME = FIELD_LIST
 ```
-where NAME is any valid identifier (though convention dictates the type should be capitalized), and the field list is a list of zero or more variables in the same format as a function parameter list. For example, a type `Foo` with fields a and b could be specified thus:
+where `NAME` is any valid identifier (though convention dictates the type should be capitalized), and `FIELD_LIST` is a list of zero or more variables in the same format as a function parameter list. For example, a type `Foo` with fields a and b could be specified thus:
 ```
 type Foo = (a: A, b: B)
 ```
@@ -204,26 +204,28 @@ If only one field is given, no parentheses are required:
 type Bar = a: A
 ```
 
-To construct a type, all fields without default values must be provided. For the example type `Foo`, a construction may look like:
+To construct an instance of the type, all fields without default values must be provided. For the example type `Foo`, a construction may look like:
 ```
 Foo (myA, myB)
 ```
-where myA is a value of type A and myB is a value of type B.
+where `myA` is a value of type `A` and `myB` is a value of type `B`.
 
 If `Foo` was defined with default values such as:
 ```
 type Foo = (a = 2, b = 3)
 ```
-then a void construction call may be used for Foo. As with regular functions, the fields may be provided anyway, or fields may be given in a different order if they have the correct labels (see [Functions](#functions)).
+then a void construction call may be used for `Foo`. As with regular functions, arguments will supercede default values and may be given in a different order if they have the correct labels (see [Functions](#functions)).
 
 Object members may be accessed by the dot notation or separated by a space. If `foo` is some instance of the previously defined type, Foo, then `foo.a` or `foo a` would give the value of `a` in `foo`. 
 
-Methods can be defined for a type with a syntax similar to a regular function definition. Assuming that type `Dog` was previously defined, a function `makeNoise` can be defined as such:
+Methods can be defined for a type with a syntax similar to a regular function definition. Assuming that type `Dog` was previously defined, a function `getName` can be defined as such:
 ```
-let Dog.makeNoise() = 0
+let Dog.getName() = this name
 ```
 
-In a method definition, the period dividing the type name and method name is necessary. However, the method can be accessed from the object in the same way that a field can be: Given some dog object, `fido`, the `makeNoise()` method can be called by either `fido.makeNoise()` or `fido makeNoise()`.
+The `this` keyword is used to access fields or methods of the instance the method is called on. 
+
+In a method definition, the period dividing the type name and method name is necessary. However, when calling the method from the object, the period is optional. For example, given some dog object, `fido`, the `getName()` method can be called by either `fido.getName()` or `fido getName()`.
 
 ### Inheritance
 Subtyping may be specified using the `isa` keyword. Suppose that A is a subtype of some pre-defined type B. In A's declaration, this relationship could be represented as such:

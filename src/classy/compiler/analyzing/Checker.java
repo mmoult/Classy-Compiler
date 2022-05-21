@@ -208,6 +208,36 @@ public class Checker {
 			//  case they are externalities for a nested function!
 			variables.add(var);
 			List<ParameterType> inputTypes = new ArrayList<>(asgn.getParamList().size());
+			// If this is a method, then the first input is this
+			Type attachedType = null;
+			if (asgn.getPath() != null) {
+				// We have to get the type of the path
+				String path = asgn.getPath();
+				if (path.indexOf('.') != -1) {
+					int periodAt = path.indexOf('.');
+					String tName = path.substring(0, periodAt);
+					// Find the analogous type given the name
+					if (attachedType == null) {
+						// We need to work backwards, trying to find the type
+						for (int i = env.size() - 1; i >= 0; i--) {
+							Frame frame = env.get(i);
+							if (frame.typeDefined(tName) != null) {
+								attachedType = frame.typeDefined(tName);
+								break;
+							}
+						}
+						if (attachedType == null)
+							throw new CheckException("No type found matching \"", tName,
+									"\" in path \"", asgn.getPath(), "\" of ", asgn);
+					}
+				}else {
+					// We may want to add nested types, but there is not currently support for it
+					throw new CheckException("Poorly formatted path \"", asgn.getPath(), " \" for ", asgn);
+				}
+				Parameter thiss = new Parameter("this", null);
+				thiss.setAnnotation(attachedType);
+				asgn.getParamList().add(thiss);
+			}
 			for (Parameter parameter: asgn.getParamList()) {
 				// Check the parameter (needed if it has a default value)
 				Value defaultValue = parameter.getDefaultVal();
@@ -338,6 +368,10 @@ public class Checker {
 				inputsReplacement = inputTypes.toArray(new ParameterType[inputTypes.size()]);
 				var.getType().inputs = inputsReplacement;
 			}
+			
+			// Lastly, tell the attached type (if any) that this is a member
+			if (attachedType != null)
+				attachedType.methods.put(var.getName(), var);
 		}
 		
 		return null;
@@ -480,9 +514,10 @@ public class Checker {
 				
 				// Now we must find some reference within
 				// We should be able to statically determine what type this member belongs to
-				parentType = getMemberOf(parentType, ref.getVarName());
-				if (parentType == null)
+				Type tempType = getMemberOf(parentType, ref.getVarName());
+				if (tempType == null)
 					throw new CheckException("\"", ref.getVarName(), "\" from ", ref, " is not a member of ", parentType, "!");
+				parentType = tempType;
 				Variable linkedTo = parentType.fields.get(ref.getVarName());
 				if (linkedTo == null)
 					linkedTo = parentType.methods.get(ref.getVarName());
@@ -493,7 +528,7 @@ public class Checker {
 				
 				Type linkType = linkedTo.getType();
 				if (linkType.isFunction())
-					handleFunctionRef(ref, linkType, env, refAt);
+					handleFunctionRef(ref, linkType, env, --refAt);
 				else
 					ref.setType(linkType);
 			}// else should never happen since the value checks that there is something before
@@ -524,7 +559,7 @@ public class Checker {
 					throw new CheckException("\"self\" keyword may only be used in a function definition! Found ",
 							ref, ".");
 				// otherwise we just have a regular undeclared variable issue
-				throw new CheckException("Reference ", ref, " to an undeclared variable \"", name, "\"!");
+				throw new CheckException(ref, " to an undeclared variable \"", name, "\"!");
 			}
 			// Add this ref as an externality for all passed function scopes
 			for (int j = i + 2; j < env.size(); j++) {
@@ -640,6 +675,11 @@ public class Checker {
 		else {
 			ls = new Tuple(argLs.getParent());
 			ls.addArg(new LabeledValue(new Value(null, argLs)));
+		}
+		if (ref.getMemberData() != null) {
+			// If member data is not null, then this is a member, and needs to have
+			// the "this" member provided as an argument
+			ls.getArgs().add(0, new LabeledValue(ref.getMemberData().location));
 		}
 		
 		// We want to type check on the number of arguments the function needs.

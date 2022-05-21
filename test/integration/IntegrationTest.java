@@ -275,6 +275,44 @@ class IntegrationTest {
 		expectFromProgram(lines, "false");
 	}
 	
+	@Test
+	void simpleMethod() {
+		List<String> lines = List.of(
+			"type Foo = num: Int",
+			"let Foo.getNum() = this.num",
+
+			"let myFoo = Foo 2",
+			"myFoo getNum void"
+		);
+		
+		expectFromProgram(lines, "2");
+	}
+	
+	@Test
+	void complexMethods() {
+		List<String> lines = List.of(
+			"type Container = (",
+			"	num: Int, ",
+			"	active: Bool",
+			")",
+			"let Container.getNum() =",
+			"	if this active",
+			"		this num",
+			"	else",
+			"		0",
+			"let Container.isActive() = this.active",
+
+			"let cont = Container(5, true)",
+			"let cont2 = Container(6, false)",
+			"if cont isActive()",
+			"	cont getNum() + cont2.getNum()",
+			"else",
+			"	false # Some error encountered!"
+		);
+		
+		expectFromProgram(lines, "5");
+	}
+	
 	protected ProcessResult runProcess(List<String> cmd) {
 		ProcessBuilder processBuilder = new ProcessBuilder(cmd);
 		processBuilder.redirectErrorStream(true);

@@ -147,28 +147,8 @@ public class Translator {
 			typeLine.append(" }");
 			setup.add(typeLine.toString() + "; Type ID = " + type.typeNum);
 		}
+				
 		lines = new LinePlacer(setup);
-		
-		lines.addLine();
-		lines.addLine("define dso_local i32 @main() {");
-		lines.deltaIndent(1);
-		
-		// Previously we could allocate space for the return before we continued.
-		//  This is not possible with the inheritance tree we set up, since subclasses
-		//  require more space than the super. Thus, the new translation model
-		//  requires each step to return the pointer location of the return.
-		String retAt = null;
-		for (Expression e: program.getSubexpressions()) {
-			retAt = translate(e);
-		}
-		
-		// TODO: We will have to use a dynamic dispatch of toString, since we won't necessarily
-		//  know statically that the variable is an int even if it is.
-		lines.addLine("call void @..print(i8* ", retAt, ")");
-		lines.addLine("ret i32 0");
-		lines.deltaIndent(-1);
-		lines.addLine("}");
-		lines.addLine();
 		
 		// We must process all of the types before any dynamic dispatch methods
 		for (Type t: types) {
@@ -204,17 +184,33 @@ public class Translator {
 					decl.append(mangMethod);
 					decl.append("(");
 					boolean first = true;
-					for (ParameterType ptype: fxType.getInputs()) {
-						if (first)
-							first = false;
-						else
-							decl.append(", ");
-						decl.append(voidPtr);
-						decl.append(" %");
-						decl.append(ptype.getName());
+					// if sourced is not null, we need to work from it to mange appropriate variables
+					if (method.getSource() != null) {
+						for (Parameter p: ((Assignment)method.getSource()).getParamList()) {
+							if (first)
+								first = false;
+							else
+								decl.append(", ");
+							decl.append(voidPtr);
+							decl.append(" ");
+							String pName = "%" + (p.getName().equals("this")? "this": mangle(p.getName()));
+							varNames.put(p.getSourced(), pName);
+							decl.append(pName);
+						}
+					}else {
+						for (ParameterType ptype: fxType.getInputs()) {
+							if (first)
+								first = false;
+							else
+								decl.append(", ");
+							decl.append(voidPtr);
+							decl.append(" %");
+							decl.append(ptype.getName());
+						}
 					}
 					decl.append(") {");
 					lines.addLine(decl.toString());
+					varNum = 1;
 					lines.deltaIndent(1);
 					
 					// Here is where we want to print the dynamic dispatch part
@@ -254,6 +250,28 @@ public class Translator {
 			}
 		}
 		
+		//lines.addLine();
+		lines.addLine("define dso_local i32 @main() {");
+		lines.deltaIndent(1);
+		varNum = 1;
+		
+		// Previously we could allocate space for the return before we continued.
+		//  This is not possible with the inheritance tree we set up, since subclasses
+		//  require more space than the super. Thus, the new translation model
+		//  requires each step to return the pointer location of the return.
+		String retAt = null;
+		for (Expression e: program.getSubexpressions()) {
+			retAt = translate(e);
+		}
+		
+		// TODO: We will have to use a dynamic dispatch of toString, since we won't necessarily
+		//  know statically that the variable is an int even if it is.
+		lines.addLine("call void @..print(i8* ", retAt, ")");
+		lines.addLine("ret i32 0");
+		lines.deltaIndent(-1);
+		lines.addLine("}");
+		lines.addLine();
+		
 		// Lastly, we need to create the "..super" method, which will allow us to cast from a type
 		//  to one of its ancestors.
 		// We need to allow for this method to be called on any type in our system. The pattern
@@ -261,6 +279,7 @@ public class Translator {
 		//  so we do it all internally instead of on a type basis.
 		lines.addLine("define dso_local ", voidPtr, " @..super(", voidPtr, " %this, i32 %exp) {");
 		lines.deltaIndent(1);
+		varNum = 1;
 		// Get the type of this
 		OutType anyType = outTypes.get(Type.Any);
 		String any = "%" + bitCast("%this", anyType);
@@ -326,7 +345,7 @@ public class Translator {
 	protected void translateOverride(Variable override, Map<String, Map<String, List<String>>> typeLibrary) {
 		if (override.getValue() != null) {
 			String retAt = translate(override.getValue());
-			lines.addLine("ret ", voidPtr, retAt);
+			lines.addLine("ret ", voidPtr, " ", retAt);
 		}else { // If it is null, then we assume it is saved as a built-in library
 			if (override.getType().getInputs().length < 1)
 				return;
@@ -539,6 +558,10 @@ public class Translator {
 				// Then we need to save that we are at got
 				varNames.put(asgn.getSourced(), got);
 			}else {
+				// If this is a method (belongs to a class) then the class will translate it
+				if (asgn.getPath() != null)
+					return null;
+				
 				// We are going to make a function declaration, which needs to be on the top
 				//  level. Thus, we start at the top scope, saving our old location to revert
 				//  back after

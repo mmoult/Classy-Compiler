@@ -10,6 +10,7 @@ public class Assignment extends NameBinding {
 	protected String varName;
 	protected List<Parameter> paramList = null;
 	protected Value value;
+	protected String path = null;
 	
 	public Assignment(Block parent) {
 		this.parent = parent;
@@ -32,12 +33,31 @@ public class Assignment extends NameBinding {
 		varName = it.token().getValue();
 		it.next(end);
 		
+		// We can see a more complex path to make this a method.
+		boolean mustFunction = false;
+		while(it.match(Token.Type.PERIOD, end)) {
+			mustFunction = true; // this is a method definition, so it must have the parentheses later
+			if (path == null)
+				path = "";
+			path = varName + '.';
+			it.next(end);
+			
+			// If we saw a period, then we need an identifier to follow (which is the method name)
+			if (!it.match(Token.Type.IDENTIFIER, end))
+				throw new ParseException("Incomplete path for method definition! Function name expected after period, but ",
+						it.token(), " found instead.");
+			varName = it.token().getValue();
+			it.next(end);
+		}
+		
 		// Now here is the interesting part. We can see an open paren, in which case, we know that
 		// this is a function definition.
 		if (it.match(Token.Type.OPEN_PAREN, end)) {
 			// Parse out the param list
 			paramList = Parameter.parseParamList(it, end);
-		}
+		}else if (mustFunction)
+			throw new ParseException("\"", varName, "\" of path ", path, "\" must be a method, but no parameters found! ",
+					it.token(), " found instead. No fields may be assigned outside of class definition.");
 		
 		if (it.match(Token.Type.COLON, end)) { // type annotation for the variable
 			it.next(end);
@@ -83,9 +103,16 @@ public class Assignment extends NameBinding {
 		return paramList;
 	}
 	
+	public String getPath() {
+		return path;
+	}
+	
 	@Override
 	public String pretty(int indents) {
 		StringBuffer buf = new StringBuffer("let ");
+		if (path != null) {
+			buf.append(path);
+		}
 		buf.append(varName);
 		if (paramList != null) {
 			buf.append('(');
